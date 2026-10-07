@@ -6,9 +6,9 @@ An offline tool for tracking signed interference-fringe changes in recorded vide
 
 The tool extracts local Fourier phase from multiple regions, tracks frame-to-frame changes, and reports forward, reverse, and net fringe motion. Videos are processed on your computer.
 
-![Fringe Counter interface excerpt](docs/ui-preview.jpg)
+[![Fringe Counter synthetic output example](docs/demo-output.png)](docs/demo-output.png)
 
-*Interface excerpt showing interval selection, signed counts, and the phase plot. The displayed values illustrate the interface; they are not a calibration certificate.*
+*High-resolution output visualization generated from the v1.1 synthetic test: the full video frame, seven detected regions, signed phase tracks, and forward/reverse totals. This is an output example, not an application screenshot or an experimental accuracy calibration. [Vector version](docs/demo-output.svg).*
 
 ## Features
 
@@ -89,7 +89,7 @@ See [validation notes](docs/validation.md) for the first-publication checks and 
 | `app.py` | Local web server and command-line runner |
 | `index.html` | Chinese-language browser interface |
 | `tests/` | Core checks and reproducible synthetic-video checks |
-| `docs/` | User guide, validation notes, and interface image |
+| `docs/` | User guide, validation notes, and synthetic output visualization |
 
 ## Method background
 
