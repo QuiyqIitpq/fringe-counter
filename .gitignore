@@ -1,0 +1,21 @@
+# Python environments and caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local recordings and generated reports
+results/
+*.avi
+*.mp4
+*.mov
+*.mkv
+*.m4v
+
+# Local configuration and OS files
+.env
+.env.*
+.DS_Store
+Thumbs.db
+*.log
