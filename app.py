@@ -18,6 +18,13 @@ from core import analyze, get_frame, probe, range_summary, review_pair
 ROOT = Path(__file__).resolve().parent
 DEFAULT_VIDEO = None
 
+
+def page_template():
+    """Embed translations so exported reports also work entirely offline."""
+    content = (ROOT / "index.html").read_text(encoding="utf-8")
+    localization = (ROOT / "i18n.js").read_text(encoding="utf-8")
+    return content.replace('<script src="i18n.js"></script>', '<script>' + localization + '</script>')
+
 @lru_cache(maxsize=24)
 def cached_review(folder, frame, roi_index):
     result=json.loads((Path(folder)/"result.json").read_text(encoding="utf-8"))
@@ -41,7 +48,7 @@ def report_data(folder):
 def save_html_report(folder):
     data=report_data(folder)
     data["preview_url"]="selected_regions.png"
-    content=(ROOT/"index.html").read_text(encoding="utf-8")
+    content=page_template()
     script="<script>window.FIXED_REPORT="+json.dumps(data,ensure_ascii=False).replace("<","\\u003c")+";</script>"
     content=content.replace("<!--BOOTSTRAP-->",script)
     (Path(folder)/"report.html").write_text(content,encoding="utf-8")
@@ -71,7 +78,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             url=urllib.parse.urlparse(self.path);q=urllib.parse.parse_qs(url.query)
             if url.path=="/":
-                content=(ROOT/"index.html").read_text(encoding="utf-8")
+                content=page_template()
                 bootstrap="<script>window.APP_TOKEN="+json.dumps(self.state.token)+";</script>"
                 self.send(content.replace("<!--BOOTSTRAP-->",bootstrap),"text/html; charset=utf-8")
             elif url.path=="/api/init":

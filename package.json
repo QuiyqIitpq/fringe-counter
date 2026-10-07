@@ -1,0 +1,6 @@
+{
+  "name": "fringe-counter-ui-checks",
+  "private": true,
+  "scripts": { "test": "node --test tests/test_i18n.cjs" },
+  "devDependencies": { "jsdom": "26.0.0" }
+}

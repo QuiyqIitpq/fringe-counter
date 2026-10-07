@@ -1,5 +1,23 @@
 # First-publication validation
 
+## v1.1.1 language-switch checks
+
+Checked on 2026-10-07. All 9 existing numerical tests, 6 JavaScript DOM tests and 2 Python page/report tests passed. The DOM tests cover Chinese/English round trips, saved preference, blocked storage, incoming progress/errors, offline reports and preserving analysis state, interval selection, sign, numbers and Chinese file paths. The page/report tests verify embedded translations and safe report-data serialization.
+
+These are programmatic DOM tests, not a visual review in Safari or another browser. Browser access remained unavailable, so responsive layout and visual appearance have not been verified in a real browser for this update. The numerical core is unchanged; no new accuracy claim is made.
+
+Optional developer checks (Node.js 18+ and Python dependencies required):
+
+```sh
+npm install
+npm test
+python3 -m unittest discover -s tests -p 'test_page.py' -v
+```
+
+Node.js and jsdom are test-only dependencies; users do not need them to run the application.
+
+## Original v1.1.0 checks
+
 Checked on 2026-10-07 on macOS with Python 3.12, NumPy 2.3.5, Pillow 12.3.0, and FFmpeg/FFprobe installed.
 
 ## Results

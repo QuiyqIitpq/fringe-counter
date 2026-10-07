@@ -2,7 +2,7 @@
 
 An offline tool for tracking signed interference-fringe changes in recorded videos.
 
-**First published version: v1.1.0 · Experimental prototype · Chinese-language interface**
+**Current version: v1.1.1 · Experimental prototype · 中文 / English interface**
 
 The tool extracts local Fourier phase from multiple regions, tracks frame-to-frame changes, and reports forward, reverse, and net fringe motion. Videos are processed on your computer.
 
@@ -15,6 +15,7 @@ The tool extracts local Fourier phase from multiple regions, tracks frame-to-fra
 - Quality flags and adjacent-frame inspection
 - CSV, JSON, NPZ, PNG, and standalone HTML report export
 - Command-line analysis and a local browser interface
+- One-click Chinese / English switching in the application and newly generated offline reports
 
 ## Quick start
 
@@ -36,7 +37,9 @@ py -3 -m venv .venv
 .venv\Scripts\python.exe app.py
 ```
 
-The server opens a local browser page. Choose a video, preview a clear frame, select the analysis area if needed, and start analysis. Stop the server with Ctrl+C. Windows instructions are provided but have not been tested in this release.
+The server opens a local browser page. Choose a video, preview a clear frame, select the analysis area if needed, and start analysis. Use **English / 中文** in the upper-right corner to switch the interface immediately. Chinese is the default; the browser remembers your choice for the same local address when storage is available. Switching preserves the video, selected interval, sign and analysis results. Stop the server with Ctrl+C. Windows instructions are provided but have not been tested in this release.
+
+Newly generated `report.html` files include the same language button and work offline. Existing exported reports must be regenerated to gain the switch. Command-line messages and raw CSV/JSON contents retain their existing format.
 
 On macOS, after installing the dependencies, you can also double-click `启动条纹计数.command`.
 
@@ -66,7 +69,7 @@ The second command generates a synthetic video with forward motion, reversal, an
 
 See [validation notes](docs/validation.md) for the first-publication checks and their limits.
 
-[View the synthetic test output plot](docs/demo-output.png) ([vector version](docs/demo-output.svg)). This separately formatted figure uses generated test data; it is not a screenshot of the Chinese-language application or a laboratory recording.
+[View the synthetic test output plot](docs/demo-output.png) ([vector version](docs/demo-output.svg)). This separately formatted figure uses generated test data; it is not a screenshot of the application or a laboratory recording.
 
 ## Interpreting results
 
@@ -85,7 +88,8 @@ See [validation notes](docs/validation.md) for the first-publication checks and 
 | --- | --- |
 | `core.py` | Video decoding, Fourier phase tracking, ROI fusion, and result export |
 | `app.py` | Local web server and command-line runner |
-| `index.html` | Chinese-language browser interface |
+| `index.html` | Browser interface |
+| `i18n.js` | Chinese / English presentation translations, embedded into offline reports |
 | `tests/` | Core checks and reproducible synthetic-video checks |
 | `docs/` | User guide, validation notes, and synthetic output visualization |
 
