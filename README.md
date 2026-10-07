@@ -6,10 +6,6 @@ An offline tool for tracking signed interference-fringe changes in recorded vide
 
 The tool extracts local Fourier phase from multiple regions, tracks frame-to-frame changes, and reports forward, reverse, and net fringe motion. Videos are processed on your computer.
 
-[![Fringe Counter synthetic output example](docs/demo-output.png)](docs/demo-output.png)
-
-*High-resolution output visualization generated from the v1.1 synthetic test: the full video frame, seven detected regions, signed phase tracks, and forward/reverse totals. This is an output example, not an application screenshot or an experimental accuracy calibration. [Vector version](docs/demo-output.svg).*
-
 ## Features
 
 - AVI, MP4, MOV, MKV, and M4V input, subject to FFmpeg decoder support
@@ -69,6 +65,8 @@ Run these in order, using the Python environment where dependencies are installe
 The second command generates a synthetic video with forward motion, reversal, and jitter. Its net ground-truth change is **+8.15 fringes**. The third command uses that generated video to check compressed-video decoding and manually selected regions. Test outputs are written under `results/` and excluded from version control.
 
 See [validation notes](docs/validation.md) for the first-publication checks and their limits.
+
+[View the synthetic test output plot](docs/demo-output.png) ([vector version](docs/demo-output.svg)). This separately formatted figure uses generated test data; it is not a screenshot of the Chinese-language application or a laboratory recording.
 
 ## Interpreting results
 
