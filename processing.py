@@ -3,10 +3,10 @@ from pathlib import Path
 from itertools import combinations
 import csv, json, uuid, time
 import numpy as np
-from core import clean_json,dump,groups,REASONS,VERSION
+from core import clean_json,dump,groups,REASONS,VERSION,ENGINE_REVISION
 
 def default_config(meta):
- return dict(enabled=[q['id'] for q in meta['rois']],visible=[q['id'] for q in meta['rois']],exclusion_mode='suggest',applied=[],rejected=[],cleaning=False,stitches=[],reference_point_px=meta['reference_point_px'],start=0,end=None,sign=1,smooth_display=False,show_conditional=False,show_mean=True,show_original=True,direct_reference=True)
+ return dict(enabled=[q['id'] for q in meta['rois']],visible=[q['id'] for q in meta['rois']],exclusion_mode='suggest',applied=[],rejected=[],cleaning=False,stitches=[],reference_point_px=meta['reference_point_px'],start=0,end=None,sign=1,smooth_display=False,show_conditional=False,show_mean=True,show_original=True,direct_reference=True,local_reference=True,joint_recovery=True,recovery_window=.6)
 
 def checked_config(meta,config,t):
  c=default_config(meta);c.update(config or {});ids={q['id'] for q in meta['rois']}
@@ -17,6 +17,8 @@ def checked_config(meta,config,t):
  if ref.shape!=(2,) or not np.isfinite(ref).all():raise ValueError('参考点无效。')
  c['start']=float(c['start']);c['end']=float(t[-1]) if c['end'] is None else float(c['end'])
  if not np.isfinite([c['start'],c['end']]).all() or c['start']<0 or c['end']<=c['start'] or c['end']>t[-1]+1e-5:raise ValueError('时间范围无效。')
+ if c['recovery_window'] not in [.3,.6,1.2,2.]:raise ValueError('趋势窗口无效。')
+ if not isinstance(c['joint_recovery'],bool):raise ValueError('联合解缠开关无效。')
  if len(c['stitches'])>30:raise ValueError('拼接事件过多。')
  return c
 
@@ -95,7 +97,7 @@ def within_hull(points,p):
   if np.min(w)>=-1e-6:return True
  return False
 
-def robust_fuse(meta,a,d,valid,enabled,reference,direct_reference=True):
+def robust_fuse(meta,a,d,valid,enabled,reference,direct_reference=True,local_reference=True):
  n,k=d.shape;out=np.full(n,np.nan);good=np.zeros(n,bool);reason=np.full(n,'无可用测量',object);used=np.zeros(n,int)
  if not enabled:return out,good,reason,used
  centers=np.array([[q['x']+q['w']/2,q['y']+q['h']/2] for q in meta['rois']]);ref=np.asarray(reference);scale=max(np.ptp(centers,axis=0).max(),1);design=np.c_[np.ones(k),(centers-ref)/scale]
@@ -103,9 +105,10 @@ def robust_fuse(meta,a,d,valid,enabled,reference,direct_reference=True):
  hull_cache={}
  anchor=int(np.argmin(np.linalg.norm(centers-ref,axis=1)))
  exact_anchor=np.linalg.norm(centers[anchor]-ref)<=.5
- def direct(i,ids):
+ def direct(i,ids,spatial_conflict=False):
   if direct_reference and exact_anchor and anchor in ids and abs(d[i,anchor])<=.38:
-   out[i]=d[i,anchor];good[i]=True;reason[i]='参考点直接测量；多框支持不足';used[i]=1;return True
+   if spatial_conflict and (not local_reference or 'local_verified' not in a or a['local_verified'][i,anchor]!=1 or abs(d[i,anchor]-a['delta'][i,anchor])>1e-12 or abs(d[i,anchor])>.35):return False
+   out[i]=d[i,anchor];good[i]=True;reason[i]='参考点局部复核通过；空间模型不适用' if spatial_conflict else '参考点直接测量；多框支持不足';used[i]=1;return True
   return False
  for i in range(1,n):
   ids=np.array([j for j in enabled if valid[i,j] and np.isfinite(d[i,j])],int)
@@ -132,7 +135,9 @@ def robust_fuse(meta,a,d,valid,enabled,reference,direct_reference=True):
    for _ in range(4):
     beta=np.linalg.lstsq(x*np.sqrt(ww[:,None]),vals*np.sqrt(ww),rcond=None)[0];res=vals-x@beta;s=max(.003,1.4826*np.median(abs(res-np.median(res))));ww=w*np.minimum(1,1.5*s/np.maximum(abs(res),1e-9))
    residual=vals-x@beta
-   if np.max(abs(residual))>.08 or np.sqrt(np.average(residual**2,weights=ww))>.025:reason[i]='空间拟合残差过大';continue
+   if np.max(abs(residual))>.08 or np.sqrt(np.average(residual**2,weights=ww))>.025:
+    if not direct(i,ids,True):reason[i]='空间拟合残差过大'
+    continue
    out[i]=float(beta[0]);good[i]=True;reason[i]='稳健空间融合'
   else:
    # No fitted slope when the geometry is rank deficient: only admit agreement.
@@ -202,7 +207,7 @@ def derive(meta,a,config=None):
     if j in enabled:enabled.remove(j)
    else:
     region=(t>s['start_s'])&(t<=s['end_s']);mask[region,j]=False;blocked[region,j]=True
- raw_fused,raw_good,raw_reason,raw_used=robust_fuse(meta,a,d,mask,enabled,c['reference_point_px'],c['direct_reference'])
+ raw_fused,raw_good,raw_reason,raw_used=robust_fuse(meta,a,d,mask,enabled,c['reference_point_px'],c['direct_reference'],c['local_reference'])
  changes=[];estimated=np.zeros_like(mask);explicitly_excluded=blocked
  if c['cleaning']:
   d,mask,repairs=conservative_repair(meta,a,d,mask,enabled);mask[explicitly_excluded]=False;d[blocked]=a['delta'][blocked];repairs=[rec for rec in repairs if not np.any(blocked[(t>rec['start_s'])&(t<=rec['end_s']),ids.index(rec['roi_id'])])];changes+=repairs
@@ -212,7 +217,7 @@ def derive(meta,a,config=None):
   for spec in sorted(c['stitches'],key=lambda s:s['start_s']):
    if spec['start_s']<=previous_end:raise ValueError('拼接区间不可重叠。')
    d,mask,est,recs=stitch(d,mask,t,spec);mask[explicitly_excluded]=False;d[blocked]=a['delta'][blocked];est[blocked]=False;estimated|=est;changes+=recs;previous_end=spec['end_s']
- fused,good,why,used=robust_fuse(meta,a,d,mask,enabled,c['reference_point_px'],c['direct_reference'])
+ fused,good,why,used=robust_fuse(meta,a,d,mask,enabled,c['reference_point_px'],c['direct_reference'],c['local_reference'])
  mean=np.full(len(t),np.nan);mean_good=np.zeros(len(t),bool)
  if enabled:
   mean=np.mean(d[:,enabled],axis=1);mean_good=np.all(mask[:,enabled],axis=1)&np.isfinite(mean)
@@ -229,7 +234,15 @@ def derive(meta,a,config=None):
  actual_applied=sorted(applied-rejected) if c['exclusion_mode']!='off' else []
  audit=tracking_audit(meta,a,fused,good,why,used,c,estimated)
 
- return clean_json(dict(version=VERSION,search_range=meta.get('search_range'),legacy=meta.get('legacy',False),video=meta['video'],audit=audit,reference_point_px=c['reference_point_px'],config=c,time=t,summary=summary,raw_summary=raw_summary,mean_summary=summarize(t,mean,mean_good,c['start'],c['end'],c['sign'],est_any),track=dict(delta=fused,valid=good,curve=curve,segments=segments,conditional_curve=np.cumsum(np.nan_to_num(fused)),reason=why,used=used,estimated=est_any,raw_delta=raw_fused,raw_valid=raw_good,raw_curve=raw_curve,raw_segments=raw_segments,raw_conditional_curve=np.cumsum(np.nan_to_num(raw_fused)),mean=mean,mean_valid=mean_good,mean_curve=mc,mean_segments=ms),adjustment_cycles=adjustment,rois=roi_reports,suggestions=suggestions,events=events,applied=actual_applied,changes=changes,note='断点后各段从局部零点显示。条件轨迹只用于诊断，不能跨断点确定整条计数。无质量报警不等于准确度已验证。'))
+ recovery=None
+ if c['joint_recovery']:
+  from recovery import recover
+  recovery=recover(meta,a,raw_fused,raw_good,enabled,c,blocked)
+ primary=dict(mode='observed' if summary['accepted_net_cycles'] is not None else 'unavailable',net_cycles=summary['accepted_net_cycles'],positive_cycles=summary['positive_cycles'],negative_cycles=summary['negative_cycles'],label='稳健融合 · 连续可读净变化')
+ if recovery and recovery.get('available') and summary['accepted_net_cycles'] is None and recovery.get('estimated_net_cycles') is not None:
+  primary=dict(mode='conditional_model',net_cycles=recovery['estimated_net_cycles'],positive_cycles=recovery['positive_cycles'],negative_cycles=recovery['negative_cycles'],label='稳健融合 + 断点估计 · 条件净变化',remaining_ambiguous_steps=recovery['remaining_ambiguous_steps'],sensitivity_range=recovery['sensitivity_range'])
+ if primary['mode']=='unavailable':primary['positive_cycles']=primary['negative_cycles']=None
+ return clean_json(dict(version=VERSION,primary=primary,recovery=recovery,search_range=meta.get('search_range'),legacy=meta.get('legacy',False),video=meta['video'],audit=audit,reference_point_px=c['reference_point_px'],config=c,time=t,summary=summary,raw_summary=raw_summary,mean_summary=summarize(t,mean,mean_good,c['start'],c['end'],c['sign'],est_any),track=dict(delta=fused,valid=good,curve=curve,segments=segments,conditional_curve=np.cumsum(np.nan_to_num(fused)),reason=why,used=used,estimated=est_any,raw_delta=raw_fused,raw_valid=raw_good,raw_curve=raw_curve,raw_segments=raw_segments,raw_conditional_curve=np.cumsum(np.nan_to_num(raw_fused)),mean=mean,mean_valid=mean_good,mean_curve=mc,mean_segments=ms),adjustment_cycles=adjustment,rois=roi_reports,suggestions=suggestions,events=events,applied=actual_applied,changes=changes,note='断点后各段从局部零点显示。条件轨迹只用于诊断，不能跨断点确定整条计数。无质量报警不等于准确度已验证。'))
 
 def tracking_audit(meta,a,d,good,why,used,c,estimated):
  """Explain missing steps; report continuous segments without bridging gaps."""
@@ -252,10 +265,16 @@ def tracking_audit(meta,a,d,good,why,used,c,estimated):
   rr=a['reason'][:,ids];near=int(np.sum(selected&np.any((rr&16)!=0,axis=1)));weak=int(np.sum(selected&np.any((rr&7)!=0,axis=1)));loss=int(np.sum(selected&np.any((rr&(8|32|64))!=0,axis=1)))
  if 'frame_near_repeat' in a:
   repeated=int(np.sum(selected&a['frame_near_repeat'].astype(bool)))
- return dict(reason_counts=reasons,unresolved_intervals=intervals,continuous_intervals=runs,direct_reference_steps=int(np.sum(selected&(why=='参考点直接测量；多框支持不足'))),near_half_steps=near,weak_signal_steps=weak,tracking_loss_steps=loss,near_repeat_steps=repeated,engine_revision=meta.get('engine_revision'),old_engine=meta.get('engine_revision')!='20261013-phase-plane-1',note='质量类别可重叠；近似重复画面不证明丢帧或原始相机帧率。所有连续计数仍以有效图像之间真实变化小于半条为条件。')
+ return dict(reason_counts=reasons,unresolved_intervals=intervals,continuous_intervals=runs,direct_reference_steps=int(np.sum(selected&(why=='参考点直接测量；多框支持不足'))),local_reference_steps=int(np.sum(selected&(why=='参考点局部复核通过；空间模型不适用'))),filter_refreshes=int(np.sum(a.get('carrier_refresh',np.zeros_like(a['delta']))[selected])),near_half_steps=near,weak_signal_steps=weak,tracking_loss_steps=loss,near_repeat_steps=repeated,engine_revision=meta.get('engine_revision'),old_engine=meta.get('engine_revision')!=ENGINE_REVISION,note='质量类别可重叠；近似重复画面不证明丢帧或原始相机帧率。所有连续计数仍以有效图像之间真实变化小于半条为条件。')
 
 def save_revision(folder,report,action='recompute'):
  folder=Path(folder);rid=time.strftime('%Y%m%d_%H%M%S')+'_'+uuid.uuid4().hex[:6];dest=folder/'revisions'/rid;dest.mkdir(parents=True)
+ dump(dest/'recovery.json',report.get('recovery'));dump(dest/'primary_summary.json',report.get('primary'))
+ with (dest/'recovery_steps.csv').open('w',newline='',encoding='utf-8-sig') as file:
+  columns=['frame','time_s','category','label','wrapped_reference_phase_cycles','estimate_cycles','original_conditional_delta','spatial','candidates','windows']
+  writer=csv.DictWriter(file,fieldnames=columns);writer.writeheader()
+  for row in (report.get('recovery') or {}).get('records',[]):
+   writer.writerow({k:json.dumps(v,ensure_ascii=False) if isinstance(v,(list,dict)) else v for k,v in row.items()})
  dump(dest/'diagnostics.json',report.get('audit',{}))
  for name,key in [('unresolved_intervals','unresolved_intervals'),('continuous_intervals','continuous_intervals')]:
   rows=report.get('audit',{}).get(key,[])
@@ -265,8 +284,10 @@ def save_revision(folder,report,action='recompute'):
    for row in rows:w.writerow({k:json.dumps(v,ensure_ascii=False) if isinstance(v,dict) else v for k,v in row.items()})
  dump(dest/'result.json',report);dump(dest/'config.json',dict(report['config'],rois=[{k:q[k] for k in ['id','label','x','y','w','h','color','source']} for q in report['rois']]));dump(dest/'operations.json',dict(action=action,created_at=time.strftime('%Y-%m-%d %H:%M:%S'),applied=report['applied'],changes=report['changes'],config=report['config']))
  t=report['time'];tr=report['track'];rois=report['rois'];sign=report['config']['sign']
+ selected_lo=max(0,int(np.searchsorted(t,report['config']['start']-1e-6)));selected_hi=min(len(t)-1,int(np.searchsorted(t,report['config']['end']+1e-6,side='right')-1))
  signed=lambda v:None if v is None else v*sign
  with (dest/'fringe_counts.csv').open('w',newline='',encoding='utf-8-sig') as f:
-  w=csv.writer(f);w.writerow(['frame','time_s','in_selected_interval','display_sign','raw_fused_delta','raw_valid','processed_delta','processed_valid','estimated','conditional_sum','segment','segment_curve','mean_delta','mean_valid']+[f'{q["id"]}_{key}' for q in rois for key in ['raw_delta','delta','valid','estimated']])
-  for i,sec in enumerate(t):w.writerow([i,sec,report['config']['start']<sec<=report['config']['end'],sign,signed(tr['raw_delta'][i]),tr['raw_valid'][i],signed(tr['delta'][i]),tr['valid'][i],tr['estimated'][i],signed(tr['conditional_curve'][i]),tr['segments'][i],signed(tr['curve'][i]),signed(tr['mean'][i]),tr['mean_valid'][i]]+[signed(q[key][i]) if key in ['raw_delta','delta'] else q[key][i] for q in rois for key in ['raw_delta','delta','valid','estimated']])
+  w=csv.writer(f);w.writerow(['frame','time_s','in_selected_interval','display_sign','raw_fused_delta','raw_valid','processed_delta','processed_valid','estimated','conditional_sum','segment','segment_curve','mean_delta','mean_valid','primary_delta','primary_valid','primary_mode','recovery_category']+[f'{q["id"]}_{key}' for q in rois for key in ['raw_delta','delta','valid','estimated']])
+  rec=report.get('recovery') or {};primary=report.get('primary',{});use_model=primary.get('mode')=='conditional_model';pd=rec.get('delta') if use_model else tr['delta'];pv=rec.get('valid') if use_model else tr['valid']
+  for i,sec in enumerate(t):w.writerow([i,sec,selected_lo<i<=selected_hi,sign,signed(tr['raw_delta'][i]),tr['raw_valid'][i],signed(tr['delta'][i]),tr['valid'][i],tr['estimated'][i],signed(tr['conditional_curve'][i]),tr['segments'][i],signed(tr['curve'][i]),signed(tr['mean'][i]),tr['mean_valid'][i],signed(pd[i]),pv[i],primary.get('mode'),(rec.get('category') or ['']*len(t))[i]]+[signed(q[key][i]) if key in ['raw_delta','delta'] else q[key][i] for q in rois for key in ['raw_delta','delta','valid','estimated']])
  dump(folder/'session.json',dict(latest_revision=rid,config=report['config']));return rid

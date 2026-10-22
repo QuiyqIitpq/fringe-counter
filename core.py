@@ -5,8 +5,8 @@ import numpy as np
 from PIL import Image, ImageDraw
 from legacy_io import probe, get_frame, binary, font, groups
 
-VERSION='1.3.0'
-ENGINE_REVISION='20261013-phase-plane-1'
+VERSION='1.6.0'
+ENGINE_REVISION='20261013-adaptive-pair-2'
 PALETTE=['#007f8b','#e88727','#6e61b6','#cd5168','#538742','#9b704e','#377ab5','#9b548c','#8b8b32']
 REASONS={1:'过暗/调制信号不足',2:'过曝',4:'周期结构不清',8:'相位失锁',16:'每帧半条风险',32:'条纹结构改变/重新捕获',64:'时间戳异常',128:'缺少新质量指标，旧版待复算'}
 
@@ -127,52 +127,61 @@ def phase_plane(unit,weight):
 
 class Tracker:
  def __init__(self,a,stats):
-  self.shape=a.shape;self.previous=None;self.previous_mod=0.;self.previous_mean=0.;self.previous_bad=True;self.stats=stats;self.set_carrier(stats);self.frame=0;self.structure_bad=0
+  self.shape=a.shape;self.previous_image=None;self.previous_stats=None;self.previous_ft=None;self.stats=stats;self.frame=0
+  h,w=self.shape;self.win=np.outer(np.hanning(h),np.hanning(w));self.fx=np.fft.fftfreq(w)*w;self.fy=np.fft.fftfreq(h)*h
+  yy,xx=np.indices(self.shape);self.xx=xx-xx.mean();self.yy=yy-yy.mean();self.ey=max(3,int(h*.22));self.ex=max(3,int(w*.22));self.set_carrier(stats)
  def set_carrier(self,s):
-  h,w=self.shape;self.k=np.array([s['kx'],s['ky']]);self.win=np.outer(np.hanning(h),np.hanning(w));fx=np.fft.fftfreq(w)*w;fy=np.fft.fftfreq(h)*h
-  self.filt=np.exp(-((fx[None,:]-self.k[0])**2+(fy[:,None]-self.k[1])**2)/(2*s['bw']**2));self.ey=max(3,int(h*.22));self.ex=max(3,int(w*.22))
- def analytic(self,a):
-  ac=a-a.mean()
-  yy,xx=np.indices(a.shape);xx=xx-xx.mean();yy=yy-yy.mean()
-  ac=ac-(ac*xx).sum()/max((xx*xx).sum(),1)*xx-(ac*yy).sum()/max((yy*yy).sum(),1)*yy
-  return np.fft.ifft2(np.fft.fft2(ac*self.win)*self.filt)[self.ey:-self.ey,self.ex:-self.ex]
+  self.k=np.array([s['kx'],s['ky']]);self.bw=s['bw'];self.filt=self.filter(self.k,self.bw)
+ def filter(self,k,bw):
+  return np.exp(-((self.fx[None,:]-k[0])**2+(self.fy[:,None]-k[1])**2)/(2*bw*bw))
+ def transform(self,a):
+  ac=a-a.mean();ac=ac-(ac*self.xx).sum()/max((self.xx*self.xx).sum(),1)*self.xx-(ac*self.yy).sum()/max((self.yy*self.yy).sum(),1)*self.yy
+  return np.fft.fft2(ac*self.win)
+ def field(self,ft,filt):return np.fft.ifft2(ft*filt)[self.ey:-self.ey,self.ex:-self.ex]
+ def analytic(self,a):return self.field(self.transform(a),self.filt)
+ def signed_stats(self,s):
+  return dict(s,kx=-s['kx'],ky=-s['ky']) if np.dot(self.k,[s['kx'],s['ky']])<0 else s
+ def pair(self,left,right,filt):
+  z0=self.field(left,filt);z1=self.field(right,filt);a0=abs(z0);a1=abs(z1)
+  result=phase_plane(z1*np.conj(z0)/np.maximum(a0*a1,1e-12),np.minimum(a0,a1))
+  return result,float(2*np.median(a0)),float(2*np.median(a1))
+ def local_check(self,left,right,s0,s1,delta):
+  # Independent carrier choices on BOTH observed images, with three fixed
+  # bandwidths. Agreement is a sensitivity check, not an accuracy certificate.
+  if s0['reason'] or s1['reason'] or abs(delta)>.35:return 0.,np.nan
+  values=[];passed=True
+  for s in (s0,s1):
+   for factor in (.8,1.,1.2):
+    result,m0,m1=self.pair(left,right,self.filter([s['kx'],s['ky']],s['bw']*factor));d,coh,scatter,*_=result;values.append(d)
+    passed &= min(m0,m1)>=6 and m0/max(s0['noise'],1)>=2.5 and m1/max(s1['noise'],1)>=2.5 and coh>=.98 and scatter<=.03 and abs(d)<=.35
+  offsets=(np.asarray(values)-delta+.5)%1-.5;spread=float(np.ptp(offsets))
+  return float(passed and spread<=.02 and np.max(abs(offsets))<=.02),spread
  def push(self,a):
-  reason=0;carrier_changed=False
-  # Recheck spectral structure throughout the video, not just in the preview.
-  if self.frame%15==0:
-   s=spectrum(a);similar=abs(np.dot(self.k,[s['kx'],s['ky']]))/max(np.linalg.norm(self.k)*np.hypot(s['kx'],s['ky']),1e-9)
-   changed=similar<.90 or not .7<np.hypot(s['kx'],s['ky'])/max(np.linalg.norm(self.k),1e-9)<1.4
-   if changed and not s['reason']:
-    if np.dot(self.k,[s['kx'],s['ky']])<0:s=dict(s,kx=-s['kx'],ky=-s['ky'])
-    # Apply the same NEW filter to both original images. This preserves
-    # the phase difference when an adaptive carrier changes; never splice
-    # two differently filtered absolute phases.
-    self.set_carrier(s);carrier_changed=True
-    self.previous=self.analytic(self.previous_image) if getattr(self,'previous_image',None) is not None else None
-    if self.previous is not None and 2*np.median(abs(self.previous))<4:reason|=32
-   self.stats=s
-  s=self.stats;z=self.analytic(a);amp=abs(z)
-  mean=float(a.mean());mod=float(2*np.median(amp));clip=float(np.mean(a>=250));noise=max(s['noise'],1.);coh=1.;scatter=0.;delta=np.nan;raw_scatter=0.;slope_x=0.;slope_y=0.
+  # Fresh spectral evidence every frame: a carrier can leave a narrow filter
+  # without crossing the old 26-degree / 40-percent change thresholds.
+  s=self.signed_stats(spectrum(a));carrier_changed=False;candidate=np.array([s['kx'],s['ky']])
+  if not s['reason'] and np.linalg.norm(candidate-self.k)>.5*min(self.bw,s['bw']):
+   self.set_carrier(s);carrier_changed=True
+  ft=self.transform(a);z=self.field(ft,self.filt);mod=float(2*np.median(abs(z)));reason=int(s['reason']&6)
+  mean=float(a.mean());clip=float(np.mean(a>=250));noise=max(s['noise'],1.);coh=1.;scatter=0.;delta=0.;raw_scatter=0.;slope_x=0.;slope_y=0.;local=0.;spread=np.nan
   if mean<20 or mod<4 or mod/noise<1.8:reason|=1
-  if clip>=.10:reason|=2
-  reason|=s['reason']&4
-  if self.previous is not None:
-   weight=np.minimum(abs(self.previous),amp);unit=z*np.conj(self.previous)/np.maximum(abs(self.previous)*amp,1e-12)
-   delta,coh,scatter,raw_scatter,slope_x,slope_y=phase_plane(unit,weight)
+  if self.previous_ft is not None:
+   # Always use the SAME filter on the two original frames. Re-evaluate left
+   # quality after an update instead of inheriting the stale-filter bad flag.
+   result,m0,mod=self.pair(self.previous_ft,ft,self.filt);delta,coh,scatter,raw_scatter,slope_x,slope_y=result;s0=self.previous_stats
+   if s0['reason']&6 or s0['mean']<20 or m0<4 or m0/max(s0['noise'],1)<1.8:reason|=8
    if coh<.95 or scatter>.055:reason|=8
    if abs(delta)>.38:reason|=16
-   if self.previous_bad:reason|=8
-  elif self.frame:reason|=32
-  else:delta=0.
-  self.previous=z;self.previous_image=a.copy();self.previous_bad=bool(reason&7);self.frame+=1
-  return [delta,reason,mean,mod,mod/noise,clip,coh,scatter,s['concentration'],self.k[0]/a.shape[1],self.k[1]/a.shape[0],raw_scatter,slope_x,slope_y,int(carrier_changed)]
+   if reason==0:local,spread=self.local_check(self.previous_ft,ft,s0,s,delta)
+  self.previous_ft=ft;self.previous_image=a.copy();self.previous_stats=s;self.stats=s;self.frame+=1
+  return [delta,reason,mean,mod,mod/noise,clip,coh,scatter,s['concentration'],self.k[0]/a.shape[1],self.k[1]/a.shape[0],raw_scatter,slope_x,slope_y,local,spread,int(carrier_changed)]
 
-FIELDS=['delta','reason','brightness','modulation','snr','clipping','coherence','scatter','concentration','kx','ky','raw_scatter','phase_slope_x','phase_slope_y','carrier_refresh']
+FIELDS=['delta','reason','brightness','modulation','snr','clipping','coherence','scatter','concentration','kx','ky','raw_scatter','phase_slope_x','phase_slope_y','local_verified','filter_spread','carrier_refresh']
 
 def video_identity(video):
  p=Path(video);s=p.stat();return dict(path=str(p.resolve()),size=s.st_size,mtime_ns=s.st_mtime_ns)
 
-def analyze(video,output,rois=None,selection=None,max_rois=7,preview_s=30,previous=None,progress=None):
+def analyze(video,output,rois=None,selection=None,max_rois=7,preview_s=30,previous=None,progress=None,reference_point_px=None):
  progress=progress or (lambda p,m:None);out=Path(output);out.mkdir(parents=True,exist_ok=False)
  info=probe(video,True);times=info.pop('timestamps');identity=video_identity(video);preview_s=max(0,min(float(preview_s),float(times[-1])-.05))
  if rois is None:rois=propose(video,selection,max_rois,preview_s)['rois']
@@ -224,7 +233,14 @@ def analyze(video,output,rois=None,selection=None,max_rois=7,preview_s=30,previo
  np.savez_compressed(out/'raw_tracks.npz',time=times,**all_arrays)
  centers=np.array([[q['x']+q['w']/2,q['y']+q['h']/2] for q in rois]);quality=np.mean(all_arrays['reason']==0,axis=0);scores=[np.median([s['score'] for s in rows]) for rows in stats_list];best=int(np.argmax(np.asarray(scores)*quality));reference=centers[best].tolist()
  if old and old.get('reference_point_px'):reference=old['reference_point_px']
+ if reference_point_px is not None:
+  reference=list(map(float,reference_point_px))
+  if len(reference)!=2 or not np.isfinite(reference).all() or not (0<=reference[0]<info['width'] and 0<=reference[1]<info['height']):raise ValueError('参考点必须在画面内。')
  meta=dict(search_range=selection,version=VERSION,engine_revision=ENGINE_REVISION,identity=identity,video=info,rois=rois,roi_diagnostics=stats_list,reference_point_px=reference,frames_decoded=len(times),reference_frame_s=float(preview_s),cache=dict(reused=cached,recomputed=recomputed),reason_bits=REASONS,legacy=False,note='Image-coordinate signed phase; not calibrated displacement. Assumes less than half a fringe per usable frame. Raw tracking is immutable.')
+ if old and previous and (Path(previous)/'spatial_evidence.json').exists():
+  from spatial_recovery import fingerprint,METHOD
+  evidence=json.loads((Path(previous)/'spatial_evidence.json').read_text())
+  if evidence.get('method')==METHOD and evidence.get('fingerprint')==fingerprint(meta):dump(out/'spatial_evidence.json',evidence)
  dump(out/'raw.json',meta);draw_regions(video,preview_s,rois,reference,out/'selected_regions.png');progress(95,'原始追踪已保存，生成可撤销的统计结果')
  return meta
 
@@ -237,7 +253,9 @@ def draw_regions(video,seconds,rois,reference,path):
 def load_raw(folder):
  folder=Path(folder)
  if (folder/'raw.json').exists():
-  m=json.loads((folder/'raw.json').read_text());z=np.load(folder/'raw_tracks.npz');a={k:z[k].copy() for k in z.files};z.close();return m,a
+  m=json.loads((folder/'raw.json').read_text());z=np.load(folder/'raw_tracks.npz');a={k:z[k].copy() for k in z.files};z.close();
+  if (folder/'spatial_evidence.json').exists():m['spatial_evidence']=json.loads((folder/'spatial_evidence.json').read_text())
+  return m,a
  r=json.loads((folder/'result.json').read_text());z=np.load(folder/'tracks.npz');d=z['roi_delta'].copy();shape=d.shape
  rois=[dict(q,id=f'legacy-{i+1}',label=f'ROI {i+1}',color=PALETTE[i%len(PALETTE)],source='legacy') for i,q in enumerate(r['rois'])]
  a={name:np.zeros(shape) for name in FIELDS};a.update(time=z['time'].copy(),delta=d,reason=np.full(shape,128,np.uint16));a['reason'][0]=0

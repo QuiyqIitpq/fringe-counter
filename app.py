@@ -68,10 +68,10 @@ class Handler(BaseHTTPRequestHandler):
     j=self.state.jobs[q['job'][0]];r=next(x for x in j['meta']['rois'] if x['id']==q['roi'][0]);im=review_pair(j['meta']['video']['path'],int(q['frame'][0]),r);b=io.BytesIO();im.save(b,format='PNG');return self.send(b.getvalue(),'image/png')
    if u.path=='/artifact':
     j=self.state.jobs[q['job'][0]];name=q['name'][0]
-    if name not in ['raw_tracks.npz','raw.json','result.json','config.json','operations.json','fringe_counts.csv','report.html','curves.svg','diagnostics.json','unresolved_intervals.csv','continuous_intervals.csv']:raise ValueError('文件不在导出列表。')
+    if name not in ['raw_tracks.npz','raw.json','result.json','config.json','operations.json','fringe_counts.csv','report.html','curves.svg','diagnostics.json','unresolved_intervals.csv','continuous_intervals.csv','recovery.json','recovery_steps.csv','primary_summary.json','spatial_evidence.json']:raise ValueError('文件不在导出列表。')
     rev=q.get('revision',[j.get('revision')])[0]
     if not rev or any(c not in '0123456789abcdef_' for c in rev):raise ValueError('导出版本无效。')
-    p=(Path(j['save_folder'])/'revisions'/rev/name) if name not in ['raw_tracks.npz','raw.json'] else (Path(j['save_folder'])/name if (Path(j['save_folder'])/name).exists() else Path(j['folder'])/name);kind={'.html':'text/html; charset=utf-8','.svg':'image/svg+xml','.csv':'text/csv; charset=utf-8','.npz':'application/octet-stream'}.get(p.suffix,'application/json');return self.send(p.read_bytes(),kind)
+    p=(Path(j['save_folder'])/'revisions'/rev/name) if name not in ['raw_tracks.npz','raw.json','spatial_evidence.json'] else (Path(j['save_folder'])/name if (Path(j['save_folder'])/name).exists() else Path(j['folder'])/name);kind={'.html':'text/html; charset=utf-8','.svg':'image/svg+xml','.csv':'text/csv; charset=utf-8','.npz':'application/octet-stream'}.get(p.suffix,'application/json');return self.send(p.read_bytes(),kind)
    return self.send(dict(error='不存在'),status=404)
   except (ValueError,KeyError,RuntimeError,FileNotFoundError) as e:self.send(dict(error=str(e)),status=400)
   except Exception as e:self.send(dict(error=str(e)),status=500)
@@ -106,8 +106,12 @@ class Handler(BaseHTTPRequestHandler):
     previous=self.state.jobs.get(data.get('previous_job'),{}).get('folder')
     def work():
      try:
-      analyze(data['video'],folder,rois=data.get('rois'),selection=data.get('selection'),max_rois=data.get('max_rois',7),preview_s=data.get('preview_s',30),previous=previous,progress=lambda p,m:j.update(progress=p,message=m))
-      m,a=load_raw(folder);j.update(meta=m,arrays=a);c=data.get('config') or default_config(m);r=derive(m,a,c);revision=save_revision(folder,r,'analysis');standalone(r,folder/'revisions'/revision/'report.html');j.update(status='complete',progress=100,message='分析完成',result=r,revision=revision)
+      analyze(data['video'],folder,rois=data.get('rois'),selection=data.get('selection'),max_rois=data.get('max_rois',7),preview_s=data.get('preview_s',30),previous=previous,reference_point_px=(data.get('config') or {}).get('reference_point_px'),progress=lambda p,m:j.update(progress=p,message=m))
+      m,a=load_raw(folder)
+      from spatial_recovery import build
+      proof=build(folder,m,a,progress=lambda p,msg:j.update(progress=p,message=msg))
+      if proof:m['spatial_evidence']=proof
+      j.update(meta=m,arrays=a);c=data.get('config') or default_config(m);r=derive(m,a,c);revision=save_revision(folder,r,'analysis');standalone(r,folder/'revisions'/revision/'report.html');j.update(status='complete',progress=100,message='分析完成',result=r,revision=revision)
      except Exception as exc:j.update(status='failed',message=str(exc))
      finally:
       with self.state.lock:self.state.busy=False
@@ -121,7 +125,9 @@ class Handler(BaseHTTPRequestHandler):
     if u.path=='/api/stitch_preview':return self.send(dict(result=r,preview=True))
     folder=Path(j['save_folder'])
     if folder!=Path(j['folder']) and not (folder/'raw.json').exists():
-     folder.mkdir(parents=True,exist_ok=True);dump(folder/'raw.json',m);np.savez_compressed(folder/'raw_tracks.npz',**a)
+     folder.mkdir(parents=True,exist_ok=True);dump(folder/'raw.json',{k:v for k,v in m.items() if k!='spatial_evidence'});
+     if m.get('spatial_evidence'):dump(folder/'spatial_evidence.json',m['spatial_evidence'])
+     np.savez_compressed(folder/'raw_tracks.npz',**a)
     revision=save_revision(folder,r,data.get('action','recompute'));standalone(r,folder/'revisions'/revision/'report.html');j.update(result=r,revision=revision)
     if u.path=='/api/export' and data.get('svg'):
      svg=data['svg']
@@ -138,7 +144,7 @@ def main():
  if args.out:
   if not args.video:p.error('--out 需要 --video')
   rois=json.loads(Path(args.rois_json).read_text()) if args.rois_json else None
-  analyze(args.video,args.out,rois=rois,selection=args.roi,preview_s=args.preview,progress=lambda p,m:print(m,flush=True));m,a=load_raw(args.out);r=derive(m,a);rid=save_revision(args.out,r,'analysis');standalone(r,Path(args.out)/'revisions'/rid/'report.html');print(json.dumps(r['summary'],ensure_ascii=False));return
+  analyze(args.video,args.out,rois=rois,selection=args.roi,preview_s=args.preview,progress=lambda p,m:print(m,flush=True));m,a=load_raw(args.out);from spatial_recovery import build;proof=build(args.out,m,a,progress=lambda p,msg:print(msg,flush=True));m.update(spatial_evidence=proof);r=derive(m,a);rid=save_revision(args.out,r,'analysis');standalone(r,Path(args.out)/'revisions'/rid/'report.html');print(json.dumps(r['summary'],ensure_ascii=False));return
  server=ThreadingHTTPServer(('127.0.0.1',args.port),Handler);server.state=State();url=f'http://127.0.0.1:{server.server_port}';print(url,flush=True)
  if not args.headless:webbrowser.open(url)
  try:server.serve_forever()

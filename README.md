@@ -1,18 +1,19 @@
-# Fringe Counter v1.3.0
+# Fringe Counter v1.6.0
 
 [English](README.md) | [中文](README.zh-CN.md)
 
-**Phase-tracking and gap-diagnostics milestone · Experimental prototype · Chinese / English UI**
+**Thorough-review reference release — slower · Experimental prototype · Chinese / English UI**
 
 ## Characteristics
 
-- Local phase-plane tracking and carrier refresh applied consistently to the same pair of frames.
-- Explicit direct-reference measurement, enabled by default only when a valid region center coincides with the fixed reference point; it is labeled separately from multi-region support.
-- Distinguishes complete accepted counts, qualified partial counts and conditional diagnostic sums.
-- Exports gap causes and continuous readable intervals, with original-frame inspection.
-- Does not contain the later joint integer-candidate / dense spatial review pipeline. Unresolved gaps remain explicit.
+- Full dense spatial review by default, with multiple grid scales, anchor sets and local-gradient connections.
+- Retains adaptive same-pair filtering and locally verified fixed-reference measurements from v1.5.
+- Stores spatial evidence, failed checks and remaining integer ambiguity separately.
+- Uses consistent primary model estimates for cards, curves, forward/reverse totals and CSV while preserving strict raw results.
+- Changing participating regions or the reference position invalidates old spatial evidence; visibility switches do not change statistics.
+- **Runtime cost:** the extra spatial pass is slow. This is the review-first reference release; v1.7 balanced is preferable for faster everyday work.
 
-The direct-reference path is a local observation with reduced multi-region support. It cannot create missing phase, extrapolate an unsupported reference or establish a reliable complete count across unresolved gaps. Later releases contain further filtering and review improvements.
+v1.6 is slower because it performs a second dense spatial pass. It is not independently proven to be the most accurate release. v1.7 full mode retains the same class of review with optimizations. Residual integer ambiguity and model assumptions remain visible; increased runtime does not establish calibrated accuracy.
 
 See [version selection and trade-offs](docs/version-history.md) for v1.2.1, v1.3, v1.6 and v1.7.
 
@@ -38,7 +39,7 @@ The package has no personal default recording, bundled laboratory results or sib
 
 Raw observations, partial sums, conditional totals and estimated repairs are distinct. Signs are image-phase directions; decimal digits are not calibrated accuracy. Read [limitations](docs/limitations.md), [validation](docs/validation.md) and the [Chinese guide](docs/usage-zh.md).
 
-Publication checks: 37 Python tests, 7 DOM tests and 2 chart/primary-output checks passed. Developer commands:
+Publication checks: 61 Python tests, 8 DOM tests and 5 chart/primary-output checks passed. Developer commands:
 
 ```sh
 python3 -B -m unittest discover -s tests -p 'test_*.py' -v
