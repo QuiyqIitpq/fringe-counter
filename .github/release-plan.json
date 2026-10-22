@@ -1,16 +1,22 @@
 {
   "releases": [
     {
-      "tag": "v1.2.1",
-      "commit": "3bf90086b6cb89e3c7ec52dfec10909ee30038f7",
-      "name": "v1.2.1 — Editable regions and bilingual reports",
+      "tag": "v1.3.0",
+      "commit": "4c439c66031e43dc0fb7f0a47d98ca249a593a13",
+      "name": "v1.3.0 — Phase tracking and gap diagnostics",
+      "latest": false
+    },
+    {
+      "tag": "v1.6.0",
+      "commit": "78377b5a20a0afb0751b0c22799247a8c3bee46e",
+      "name": "v1.6.0 — Thorough spatial review (slower)",
       "latest": false
     },
     {
       "tag": "v1.7.0",
-      "commit": "HEAD",
-      "name": "v1.7.0 — Balanced tracking and full spatial review",
-      "latest": true
+      "commit": "89dc30a4e0b787c994a08b3334e79cc8c906b512",
+      "latest": true,
+      "refresh_notes": true
     }
   ]
 }

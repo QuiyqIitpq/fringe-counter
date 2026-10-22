@@ -13,7 +13,7 @@ def measure(im0,im1,q,orientation):
  x,y,w,h=q;a=im0[y:y+h,x:x+w].astype(float);b=im1[y:y+h,x:x+w].astype(float);s0=spectrum(a);s1=spectrum(b)
  if s0['reason'] or s1['reason']:return None
  if min(s0['modulation'],s1['modulation'])<6 or min(s0['snr'],s1['snr'])<2.5:return None
- tr=Tracker(a,s0);ft0=tr.transform(a);ft1=tr.transform(b);values=[];quality=[];grads=[]
+ tr=Tracker(a,s0);ft0=tr.transform(a);ft1=tr.transform(b);tr.pair_cache={};tr.previous_ft=ft0;tr.previous_fields={};tr.current_ft=ft1;tr.current_fields={};values=[];quality=[];grads=[]
  for s in (s0,s1):
   k=np.array([s['kx'],s['ky']]);k=k*(1 if np.dot(k/np.array([w,h]),orientation)>=0 else -1)
   for factor in (.8,1.,1.2):
@@ -155,6 +155,7 @@ def build(folder,meta,a,progress=None):
 def eligible(meta,c,enabled,blocked):
  """Never reuse proof after geometry, reference, participation or exclusion changes."""
  evidence=meta.get('spatial_evidence')
+ if meta.get('analysis_mode')=='balanced':return []
  if not evidence or evidence.get('method')!=METHOD or evidence.get('fingerprint')!=fingerprint(meta):return []
  if c['reference_point_px']!=meta['reference_point_px'] or set(enabled)!=set(range(len(meta['rois']))):return []
  rows=[]

@@ -1,27 +1,28 @@
-# Fringe Counter v1.6.0
+# Fringe Counter
 
 [English](README.md) | [中文](README.zh-CN.md)
 
-**Thorough-review reference release — slower · Experimental prototype · Chinese / English UI**
+**v1.7.0 · Experimental research prototype · 中文 / English · Local video processing**
 
-## Characteristics
+Balanced all-frame tracking with optional full spatial review. Load a recorded interferogram, select clear regions, and inspect signed forward/reverse and fractional fringe changes. Videos are processed on your computer.
 
-- Full dense spatial review by default, with multiple grid scales, anchor sets and local-gradient connections.
-- Retains adaptive same-pair filtering and locally verified fixed-reference measurements from v1.5.
-- Stores spatial evidence, failed checks and remaining integer ambiguity separately.
-- Uses consistent primary model estimates for cards, curves, forward/reverse totals and CSV while preserving strict raw results.
-- Changing participating regions or the reference position invalidates old spatial evidence; visibility switches do not change statistics.
-- **Runtime cost:** the extra spatial pass is slow. This is the review-first reference release; v1.7 balanced is preferable for faster everyday work.
+This is the current recommended source release. [Downloads and release notes](https://github.com/QuiyqIitpq/fringe-counter/releases).
 
-v1.6 is slower because it performs a second dense spatial pass. It is not independently proven to be the most accurate release. v1.7 full mode retains the same class of review with optimizations. Residual integer ambiguity and model assumptions remain visible; increased runtime does not establish calibrated accuracy.
+## Choose a version
 
-See [version selection and trade-offs](docs/version-history.md) for v1.2.1, v1.3, v1.6 and v1.7.
+- **v1.3.0:** observation-first phase tracking and explicit gap diagnostics, without the later dense review pipeline.
+- **v1.6.0:** slower, thorough-review reference release. Full dense spatial review runs by default; choose it for detailed spatial diagnostics or reproducing v1.6.
+- **v1.7.0:** recommended for everyday work. Balanced mode prioritizes speed; full mode retains the same class of dense review with computational optimizations.
 
-## Install and run
+Review depth is not a proven accuracy ranking. No independent ground truth establishes v1.6 as the most accurate version. [Compare all published versions](docs/version-history.md).
 
-This is a source package requiring **Python 3.10+, FFmpeg / FFprobe, NumPy and Pillow**. On macOS, install Python and FFmpeg, run **首次安装.command** once, then run **启动条纹计数.command**. Keep the terminal open. Setup downloads Python dependencies; video analysis stays local.
+## First run
 
-Alternatively:
+This download contains source code. It requires **Python 3.10+, FFmpeg/FFprobe, NumPy and Pillow**. It is not a standalone application binary.
+
+On macOS, install Python and FFmpeg from their official channels, then double-click **首次安装.command** once to create the project environment and install the Python dependencies. Next double-click **启动条纹计数.command**. Keep its terminal window open during use. The Python setup step uses the internet; video analysis stays local.
+
+Alternatively, from the extracted folder on macOS or Linux:
 
 ```sh
 python3 -m venv .venv
@@ -29,17 +30,44 @@ python3 -m venv .venv
 .venv/bin/python3 app.py
 ```
 
-Windows can use `py -3 -m venv .venv` and `.venv\Scripts\python.exe`; Windows/Linux are not verified in this publication.
+On Windows, create the environment with `py -3 -m venv .venv`, then use `.venv\Scripts\python.exe` for installation and running `app.py`. Windows and Linux are not verified in this publication.
 
-Choose a video, generate or draw regions, analyze, select an interval/sign, inspect diagnostics and export. The upper-right **English / 中文** button preserves current work. New self-contained HTML reports include the switch; editing/recalculation requires the running application.
+## Workflow
 
-The package has no personal default recording, bundled laboratory results or sibling-folder runtime dependency. Only this installation's `results/` is automatically listed.
+1. Choose a video and preview a clear time.
+2. Generate candidate regions or add/move/resize rectangular regions manually.
+3. Analyze. Region geometry changes require retracking; processing switches operate on saved tracks.
+4. Choose an interval and sign. Including a region changes statistics; showing a curve only changes visibility.
+5. Inspect quality flags and original adjacent frames. Preview model-based changes before applying them.
+6. Save the current revision and export CSV, JSON, data arrays and a self-contained HTML snapshot.
 
-## Interpretation and checks
+Use **English / 中文** in the upper-right corner to switch immediately without resetting work. New HTML snapshots also include the language button. A snapshot freezes statistics; reopen the saved analysis in the running app to edit or recalculate.
 
-Raw observations, partial sums, conditional totals and estimated repairs are distinct. Signs are image-phase directions; decimal digits are not calibrated accuracy. Read [limitations](docs/limitations.md), [validation](docs/validation.md) and the [Chinese guide](docs/usage-zh.md).
+The public package starts without a personal default video or bundled laboratory results. Saved analyses created in this installation appear under its own `results/` folder.
 
-Publication checks: 61 Python tests, 8 DOM tests and 5 chart/primary-output checks passed. Developer commands:
+## Analysis modes
+
+**Balanced** is the default: all frames are processed, with adaptive pair filtering, local quality checks, robust fusion and joint diagnostics. It avoids the additional dense full-frame spatial review.
+
+**Full spatial review** adds the dense multiscale checks introduced in v1.6. Reanalyzing unchanged regions can reuse their tracks. It can take substantially longer.
+
+Parallel tracking uses temporary disk maps (up to five workers). Disk use scales with frame count, region count and processed region size. The application checks available space; normal completion/error cleanup removes `.tracking_tmp`. Interrupted or forcibly killed runs can leave temporary files.
+
+## Command line
+
+```sh
+.venv/bin/python3 app.py --video '/path/to/video.mp4' --out 'results/my-analysis' --mode balanced
+```
+
+`--rois-json` supplies region geometry and `--preview` selects the reference time for candidate detection. It does not define heating onset.
+
+## Results and limitations
+
+Counts are image-phase changes. Conditional or model-based totals can contain unresolved integer branches and are not calibrated displacement or thermal expansion. Display precision is not measurement accuracy. Read [interpretation limits](docs/limitations.md) and [publication validation](docs/validation.md).
+
+## Versions and checks
+
+See [version comparison](docs/version-history.md), [CHANGELOG](CHANGELOG.md), and [Chinese guide](docs/usage-zh.md). Numerical tests require only the runtime dependencies and FFmpeg. Optional DOM tests require Node.js 18+ and jsdom:
 
 ```sh
 python3 -B -m unittest discover -s tests -p 'test_*.py' -v
@@ -48,4 +76,4 @@ npm install
 npm test
 ```
 
-AI assistance was used in development and documentation. No license has been selected.
+AI assistance was used in development and documentation. No open-source license has been selected; this publication does not add one.

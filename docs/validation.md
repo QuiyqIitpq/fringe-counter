@@ -1,9 +1,17 @@
-# v1.6.0 publication checks — 2026-10-22
+# Publication checks — v1.7.0
 
-The public package passes 61 Python numerical/integration/report tests, 8 DOM interaction tests and 5 chart/primary-output checks on macOS. Tests include controlled/generated inputs; private laboratory recordings are not bundled.
+Rechecked on macOS, 2026-10-22, using the public source package:
 
-The local server is smoke-checked for blank personal defaults/history, language asset delivery and embedded standalone reports. Numerical source is retained from the local v1.6.0 version; only public packaging, personal defaults/history discovery, startup and documentation are adapted.
+| Check | Result |
+| --- | --- |
+| Python numerical, video integration and report tests | 65 passed; no skips |
+| DOM language/state/mode tests | 9 passed |
+| Chart and primary-output checks | 5 passed |
 
-v1.6 is slower because it performs a second dense spatial pass. It is not independently proven to be the most accurate release. v1.7 full mode retains the same class of review with optimizations. Residual integer ambiguity and model assumptions remain visible; increased runtime does not establish calibrated accuracy.
+Tests use generated signals/videos and controlled fixtures. They cover the cases implemented in the supplied suite, not every recording or failure mode. Private experimental videos and results are not included.
 
-No independent experimental ground-truth calibration or new visual browser review was performed for this publication. Windows/Linux are not verified. See README for reproduction commands and [version comparison](version-history.md) for the runtime/review trade-off.
+Application-server initialization, bilingual asset delivery, report embedding and the public package's blank default/history are smoke-checked for publication. No new browser screenshot or visual browser acceptance is claimed. Windows/Linux execution and a new independent calibration on laboratory footage were not performed.
+
+The numerical source is retained from the selected local version. Packaging changes are limited to personal defaults/history discovery, startup guidance, documentation and test portability. The exact v1.6 tracking regression baseline is bundled under `tests/baselines/`; the suite no longer needs a sibling v1.6 folder.
+
+Runtime dependencies: Python 3.10+, NumPy, Pillow and FFmpeg/FFprobe. Optional DOM tests use Node.js and jsdom 26.0.0. See README for reproduction commands and [limitations](limitations.md) for scientific interpretation.

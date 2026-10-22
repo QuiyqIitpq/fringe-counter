@@ -4,6 +4,11 @@
 (() => {
   'use strict';
   const en = {
+    '分析模式': 'Analysis mode',
+    '均衡（默认）': 'Balanced (default)',
+    '完整空间复核（较慢）': 'Full spatial review (slower)',
+    '均衡模式逐帧追踪，保留局部复核和断点联合检查。完整模式额外检查全画面密集小框；框不变时复用已有追踪。耗时随视频长度和框数变化，建议先用 5 个框。': 'Balanced mode tracks every frame, retaining local checks and joint gap analysis. Full mode also checks a dense spatial grid. Unchanged regions reuse existing tracks. Runtime depends on duration and ROI count; start with five regions.',
+
     '密集空间复核证据': 'Dense spatial evidence',
     '原始完整净变化与模型估计分开。多框可以检查相对漏计，但所有框共同漏掉整条时，仍需要运动连续性假设。新版默认开启条件估计，可关闭以查看严格结果；不与清洗混用。密集小框只提供空间复核证据，不进入用户计数框的算术平均。': 'Original complete net changes and model estimates are separate. Multiple regions can check relative missed counts, but shared whole-fringe loss still requires motion assumptions. Conditional estimation is enabled by default; disable it for strict observations. It is not combined with cleaning. Dense patches supply spatial checks only and do not enter the arithmetic mean of selected regions.',
     '密集空间复核支持（依赖锚点采样条件）': 'Dense spatial support (conditional on anchor sampling)',
@@ -153,6 +158,10 @@
   };
   // Match whole application messages, preserving interpolated paths and numbers.
   const patterns = [
+    [/^(均衡模式|完整空间复核|历史结果：未记录模式) · (.*?) · 不含选框、最终统计和导出$/, (_,m,t)=>({'均衡模式':'Balanced mode','完整空间复核':'Full spatial review','历史结果：未记录模式':'Historical result: mode not recorded'}[m])+' · '+t.replace('分析耗时 ','Analysis time ').replace('原始追踪耗时 ','Raw tracking time ')+' · excludes ROI selection, final statistics and export'],
+    [/^已读取 (\d+)\/(\d+) 帧；并行追踪 (\d+)\/(\d+) 框帧$/,(_,a,b,c,d)=>`Read ${a}/${b} frames; tracked ${c}/${d} ROI frames in parallel`],
+    [/^并行追踪 (\d+)\/(\d+) 框帧（不跳帧）$/,(_,a,b)=>`Parallel tracking ${a}/${b} ROI frames (no frame skipping)`],
+
     [/^整段条件估计：仍有 (\d+) 步不能唯一确定。不同趋势窗口得到 (.+) 至 (.+) 条；这不是误差范围，也不保证包含真值。正反向累计同样包含估计，未观测到的往返不能恢复。$/,(_,n,a,b)=>`Full conditional estimate: ${n} steps remain ambiguous. Different trend windows give ${a} to ${b} fringes; this is not an uncertainty interval and may exclude the truth. Positive and negative totals also include estimates; unobserved round trips cannot be recovered.`],
     [/^原始断点 (\d+)；空间关系支持 (\d+)；密集空间复核 (\d+)；多窗口一致 (\d+)；缺少可靠相位 (\d+)；用户排除 (\d+)。这些连接仍依赖模型，不代表准确率。$/,(_,a,b,c,d,e,f)=>`Original gaps ${a}; spatial support ${b}; dense spatial checks ${c}; window agreement ${d}; no reliable phase ${e}; user excluded ${f}. These connections remain model-dependent, not accuracy measurements.`],
     [/^空间复核 (\d+)\/(\d+) 个图像对$/,(_,a,b)=>`Spatial checks: ${a}/${b} image pairs`],
@@ -438,8 +447,8 @@
 
 
   Object.assign(en,{
-  "条纹计数 1.6.0 · 可编辑多框": "Fringe Counter 1.6.0 · Editable regions",
-  "Fringe Counter 1.6.0 · 本机离线处理 · 原始视频不修改": "Fringe Counter 1.6.0 · Local offline processing · Source videos remain unchanged",
+  "条纹计数 1.7.0 · 可编辑多框": "Fringe Counter 1.7.0 · Editable regions",
+  "Fringe Counter 1.7.0 · 本机离线处理 · 原始视频不修改": "Fringe Counter 1.7.0 · Local offline processing · Source videos remain unchanged",
   "断点联合检查与整段估计": "Joint gap checks and whole-interval estimates",
   "结合其他框和前后趋势检查整数候选": "Check integer candidates using other regions and neighboring trends",
   "趋势窗口（秒）": "Trend window (seconds)",

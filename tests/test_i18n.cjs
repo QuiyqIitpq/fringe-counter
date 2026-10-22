@@ -40,7 +40,7 @@ test('all initial controls and accessibility labels switch and round-trip',async
   try{
     assert.equal(d.documentElement.lang,'zh-CN');
     d.getElementById('languageToggle').click();await flush();
-    assert.equal(d.documentElement.lang,'en');assert.match(d.title,/1\.6\.0/);
+    assert.equal(d.documentElement.lang,'en');assert.match(d.title,/1\.7\.0/);
     assert.doesNotMatch(textNodes(w),/\p{Script=Han}/u);
     assert.equal(d.getElementById('pairImage').alt,'Adjacent original frames');
     assert.equal(d.getElementById('revisions').getAttribute('aria-label'),'Processing revision');
@@ -131,4 +131,13 @@ test('v1.4 recovery numbers, candidate evidence and offline switches stay consis
   assert.equal(w.eval('JSON.stringify({report,config})'),before);
   w.FringeI18n.setLanguage('zh-CN');await flush();assert.match(d.getElementById('recoveryCounts').textContent,/空间关系支持 54/);
  }finally{w.close()}
+});
+test('selected analysis mode is sent without changing ROI geometry',async()=>{
+ const dom=await page(),w=dom.window,d=w.document;
+ try{
+  w.eval('meta={path:"/tmp/test.mp4"};boxes=[{id:"r1",x:10,y:20,w:96,h:96}];');
+  d.getElementById('analysisMode').value='full';d.getElementById('run').click();await flush();await flush();
+  const req=dom.requests.find(x=>x.url==='/api/analyze');assert.ok(req);
+  const body=JSON.parse(req.options.body);assert.equal(body.analysis_mode,'full');assert.deepEqual(body.rois,[{id:'r1',x:10,y:20,w:96,h:96}]);
+ }finally{w.close();}
 });
