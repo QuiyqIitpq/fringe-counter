@@ -1,0 +1,25 @@
+name: Publish selected source releases
+on:
+  push:
+    branches: [main]
+    paths: ['.github/release-plan.json']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: selected-source-releases
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify source manifests, package and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: python3 scripts/publish_selected.py

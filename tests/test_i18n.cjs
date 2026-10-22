@@ -1,142 +1,111 @@
-// DOM tests only: no browser process, external resources or real video required.
-const {test} = require('node:test');
-const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
-const {JSDOM, VirtualConsole} = require('jsdom');
-const root = path.resolve(__dirname, '..');
-const template = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
-const localization = fs.readFileSync(path.join(root, 'i18n.js'), 'utf8');
-const flush = () => new Promise(resolve => setImmediate(resolve));
-const fixture = () => ({
-  rois: [{}, {}, {}], frames_decoded: 4,
-  track: {time:[0,1,2,3], delta:[0,.1,-.2,.3], reason:[0,0,4,0], roi_curves:[[0,.1,-.1,.2],[0,.1,-.1,.2],[0,.1,-.1,.2]]},
-  drift_detection:{candidate_start_s:null,note:'录像太短，无法判断持续漂移。'},
-  best_continuous_segments:[{start_s:0,end_s:1,net_cycles:.1}],
-  unsafe_intervals:[{start_s:1,end_s:2,reason_bits:4}],
-  reason_bits:{4:'区域相位变化不一致'},
-  folder:'/tmp/实验秒条/结果', video:{timestamp_source:'file'},
-  reference_frame_s:1, preview_url:'selected_regions.png',
-  whole_video:{note:'Sampling assumption applies.'}
-});
-async function page({report=null,language=null,blockedStorage=false}={}) {
-  const errors=[];
-  const vc = new VirtualConsole();
-  vc.on('jsdomError', e=>errors.push(e));
-  let html=template.replace('<script src="i18n.js"></script>',()=>'<script>'+localization+'</script>');
-  html=html.replace('<!--BOOTSTRAP-->',report?'<script>window.FIXED_REPORT='+JSON.stringify(report)+'</script>':'<script>window.APP_TOKEN="test"</script>');
-  const dom=new JSDOM(html, {
-    url:report?'file:///tmp/report.html':'http://127.0.0.1:8769/',runScripts:'dangerously',virtualConsole:vc,
-    beforeParse(w) {
-      if (blockedStorage) Object.defineProperty(w,'localStorage',{get(){throw Error('Storage unavailable');}});
-      else if(language) w.localStorage.setItem('fringe-counter-language',language);
-      w.fetch=async()=>({ok:true,json:async()=>({default_video:'',example_available:false})});
-      w.HTMLCanvasElement.prototype.getContext=()=>new Proxy({},{get:(_,key)=>key==='measureText'?()=>({width:10}):()=>{}});
-      w.HTMLCanvasElement.prototype.getBoundingClientRect=()=>({width:800,height:330,left:0,top:0});
-      w.Image=class {constructor(){this.naturalWidth=768;this.naturalHeight=576;}set src(value){this._src=value;queueMicrotask(()=>this.onload?.());}get src(){return this._src;}};
-    }
-  });
-  await flush(); await flush();
-  assert.deepEqual(errors,[], 'page initializes without JavaScript errors');
-  return dom;
+// DOM-only checks. Install jsdom 26 for these developer tests; no browser is launched.
+const {test}=require('node:test'),assert=require('node:assert/strict');
+const fs=require('node:fs'),path=require('node:path'),{execFileSync}=require('node:child_process');
+const {JSDOM,VirtualConsole}=require('jsdom');
+const root=path.resolve(__dirname,'..');
+const python=process.env.PYTHON || (fs.existsSync(path.join(root,'.venv/bin/python3'))?path.join(root,'.venv/bin/python3'):'python3');
+const fixture=JSON.parse(execFileSync(python,['-B','-c',`
+import sys,json,numpy as np
+sys.path[:0]=['.', 'tests']
+from test_v12 import fixture
+from processing import derive,default_config
+m,a=fixture(600)
+m['video']['path']='/tmp/中文视频.avi'
+a['delta'][:]=.002;a['delta'][0]=0;a['delta'][200:220]=np.nan;a['reason'][200:220]=8
+c=default_config(m);c['cleaning']=True;c['stitches']=[dict(start_s=6.5,end_s=7.5,pre_window_s=3,post_window_s=3)]
+print(json.dumps(derive(m,a,c),ensure_ascii=False))
+`],{cwd:root,encoding:'utf8',maxBuffer:8*1024*1024}));
+const flush=()=>new Promise(resolve=>setImmediate(resolve));
+async function page({offline=false,saved=null,blockedStorage=false}={}) {
+  let html=fs.readFileSync(path.join(root,'index.html'),'utf8');
+  for(const file of ['i18n.js','ui.js']) html=html.replace(`<script src="/${file}"></script>`,()=>'<script>'+fs.readFileSync(path.join(root,file),'utf8')+'</script>');
+  html=html.replace('<!--BOOT-->',offline?'<script>window.FIXED_REPORT='+JSON.stringify(fixture).replaceAll('<','\\u003c')+'</script>':'<script>window.TOKEN="test"</script>');
+  const errors=[],requests=[];const console=new VirtualConsole();console.on('jsdomError',e=>errors.push(e));
+  const dom=new JSDOM(html,{url:offline?'file:///tmp/fringe-report.html':'http://127.0.0.1:8781',runScripts:'dangerously',virtualConsole:console,beforeParse(w){
+    if(blockedStorage)Object.defineProperty(w,'localStorage',{get(){throw Error('blocked');}});
+    else if(saved)w.localStorage.setItem('fringe-counter-language',saved);
+    w.fetch=async(url,options)=>{requests.push({url,options});return {ok:true,json:async()=>url==='/api/init'?{default_video:''}:[]};};
+    w.HTMLCanvasElement.prototype.getContext=()=>new Proxy({},{get:()=>()=>{}});
+    w.Image=class{constructor(){this.naturalWidth=400;this.naturalHeight=400;}set src(v){this._src=v;queueMicrotask(()=>this.onload?.());}get src(){return this._src;}};
+  }});
+  await flush();await flush();assert.deepEqual(errors,[]);dom.requests=requests;return dom;
 }
-function visibleTexts(w) {
-  const walker=w.document.createTreeWalker(w.document.body,w.NodeFilter.SHOW_TEXT);
-  const texts=[];
-  while(walker.nextNode()) {
-    const n=walker.currentNode;
-    if(!n.parentElement.closest('script,style,textarea,[data-no-translate],.hidden,#folder')) texts.push(n.nodeValue);
-  }
-  return texts.join('\n');
+function textNodes(w){
+  const walker=w.document.createTreeWalker(w.document.body,w.NodeFilter.SHOW_TEXT),out=[];
+  while(walker.nextNode()){const n=walker.currentNode;if(!n.parentElement.closest('script,style,textarea,[data-no-translate]'))out.push(n.nodeValue);}
+  return out.join('\n');
 }
-test('default Chinese, one-click English, attributes and Chinese round trip',async()=>{
-  const dom=await page();const w=dom.window,d=w.document;
-  try {
-    assert.equal(d.documentElement.lang,'zh-CN');
-    assert.equal(d.querySelector('h1').textContent,'干涉条纹计数');
-    d.getElementById('languageToggle').click();await flush();
-    assert.equal(d.documentElement.lang,'en');
-    assert.equal(d.querySelector('h1').textContent,'Fringe Counter');
-    assert.equal(d.title,'Fringe Counter · v1.1.1');
-    assert.equal(d.getElementById('path').placeholder,'Paste an AVI / MP4 / MOV path');
-    assert.equal(d.getElementById('reviewImage').alt,'Adjacent frames of the same fringe region');
-    assert.doesNotMatch(visibleTexts(w),/\p{Script=Han}/u);
-    assert.equal(w.localStorage.getItem('fringe-counter-language'),'en');
-    d.getElementById('languageToggle').click();await flush();
-    assert.equal(d.querySelector('h1').textContent,'干涉条纹计数');
-    assert.equal(d.getElementById('path').placeholder,'粘贴 AVI / MP4 / MOV 路径');
-  } finally {w.close();}
-});
-test('saved choice loads, and switching still works when storage is blocked',async()=>{
-  const saved=await page({language:'en'});
-  assert.equal(saved.window.document.querySelector('h1').textContent,'Fringe Counter');saved.window.close();
-  const blocked=await page({blockedStorage:true});
-  blocked.window.document.getElementById('languageToggle').click();await flush();
-  assert.equal(blocked.window.document.documentElement.lang,'en');blocked.window.close();
-});
-test('progress and errors arriving after switching use the current language',async()=>{
-  const dom=await page({language:'en'}),w=dom.window,d=w.document;
-  try {
-    const s=d.getElementById('status');
-    s.textContent='已处理 123 帧';await flush();assert.equal(s.textContent,'Processed 123 frames');
-    s.textContent='视频文件不存在，请检查路径或选择文件。';await flush();
-    assert.match(s.textContent,/video file does not exist/);
-    s.firstChild.nodeValue='已处理 456 帧';await flush();assert.equal(s.textContent,'Processed 456 frames');
-    d.getElementById('languageToggle').click();await flush();assert.equal(s.textContent,'已处理 456 帧');
-  } finally {w.close();}
-});
-test('offline report switches results and preserves selected range, sign and values',async()=>{
-  const data=fixture(),before=JSON.stringify(data),dom=await page({report:data}),w=dom.window,d=w.document;
-  try {
-    const start=d.getElementById('start'),end=d.getElementById('end'),sign=d.getElementById('sign');
-    start.value='1';end.value='3';sign.value='-1';sign.dispatchEvent(new w.Event('change'));
-    d.getElementById('reviewFrame').value='2';
-    d.getElementById('exportText').value='{"path":"/tmp/实验秒条"}';
-    const values=['net','positive','negative','quality'].map(id=>d.getElementById(id).textContent);
-    const raw=JSON.stringify(w.FIXED_REPORT);
-    d.getElementById('languageToggle').click();await flush();
-    assert.equal(start.value,'1');assert.equal(end.value,'3');assert.equal(sign.value,'-1');
-    assert.equal(d.getElementById('reviewFrame').value,'2');
-    assert.deepEqual(['net','positive','negative','quality'].map(id=>d.getElementById(id).textContent),values);
-    assert.match(d.getElementById('warning').textContent,/conditional estimates/);
-    assert.equal(d.getElementById('folder').textContent,'Results folder: /tmp/实验秒条/结果 · Timing: file timestamps');
-    assert.doesNotMatch(visibleTexts(w),/\p{Script=Han}/u);
-    assert.equal(d.getElementById('exportText').value,'{"path":"/tmp/实验秒条"}');
-    assert.equal(JSON.stringify(w.FIXED_REPORT),raw);assert.equal(JSON.stringify(data),before);
-    d.getElementById('languageToggle').click();await flush();
-    assert.match(d.getElementById('warning').textContent,/条件估计/);
-    assert.deepEqual(['net','positive','negative','quality'].map(id=>d.getElementById(id).textContent),values);
-  } finally {w.close();}
-});
-test('switching does not clear an in-progress job, input, search box or focus',async()=>{
+test('all initial controls and accessibility labels switch and round-trip',async()=>{
   const dom=await page(),w=dom.window,d=w.document;
-  try {
-    d.getElementById('path').value='/tmp/实验秒条.avi';
-    w.eval('selection=[10,20,300,400]; jobId="running-job"; setBusy(true)');
-    d.getElementById('roiInfo').textContent='搜索框：10, 20, 300, 400（原始像素）';
-    d.getElementById('languageToggle').focus();
-    w.FringeI18n.setLanguage('en');await flush();
-    assert.equal(d.getElementById('path').value,'/tmp/实验秒条.avi');
-    assert.equal(w.eval('jobId'),'running-job');
-    assert.equal(w.eval('JSON.stringify(selection)'),'[10,20,300,400]');
-    assert.equal(d.getElementById('run').disabled,true);
-    assert.equal(d.activeElement.id,'languageToggle');
-    assert.match(d.getElementById('roiInfo').textContent,/Search box: 10, 20, 300, 400/);
-  } finally {w.close();}
+  try{
+    assert.equal(d.documentElement.lang,'zh-CN');
+    d.getElementById('languageToggle').click();await flush();
+    assert.equal(d.documentElement.lang,'en');assert.match(d.title,/1\.2\.1/);
+    assert.doesNotMatch(textNodes(w),/\p{Script=Han}/u);
+    assert.equal(d.getElementById('pairImage').alt,'Adjacent original frames');
+    assert.equal(d.getElementById('revisions').getAttribute('aria-label'),'Processing revision');
+    d.getElementById('languageToggle').click();await flush();
+    assert.match(d.getElementById('run').textContent,/复算修改/);
+    assert.equal(d.getElementById('pairImage').alt,'相邻原始帧');
+  }finally{w.close();}
 });
-test('dynamic drift, warnings, timing and technical errors keep numbers and paths',async()=>{
+test('offline results, suggestions, repair warnings and SVG descriptions translate',async()=>{
+  const dom=await page({offline:true}),w=dom.window,d=w.document;
+  try{
+    const before=w.eval('JSON.stringify({report,config,boxes})');
+    const paths=[...d.querySelectorAll('#chart path')].map(x=>x.getAttribute('d'));
+    d.getElementById('languageToggle').click();await flush();
+    assert.doesNotMatch(textNodes(w),/\p{Script=Han}/u);
+    assert.match(d.getElementById('resultNotice').textContent,/estimated repairs/);
+    assert.match(d.getElementById('changes').textContent,/does not recover missed fringes/);
+    assert.equal(d.querySelector('#chart svg').getAttribute('aria-label'),'Signed cumulative fringe-change plot');
+    assert.equal(w.eval('JSON.stringify({report,config,boxes})'),before);
+    assert.deepEqual([...d.querySelectorAll('#chart path')].map(x=>x.getAttribute('d')),paths);
+    d.getElementById('languageToggle').click();await flush();
+    assert.match(d.getElementById('changes').textContent,/不是恢复丢失条数/);
+    assert.equal(w.eval('JSON.stringify({report,config,boxes})'),before);
+  }finally{w.close();}
+});
+test('language switch preserves box edits, pending stitch, undo stacks and in-progress state',async()=>{
+  const dom=await page({offline:true}),w=dom.window,d=w.document;
+  try{
+    w.eval('dirty=true; selected=boxes[0].id; boxes[0].x=23; search=[0,0,200,200]; pending={before:clone(config),config:clone(config),result:report}; boxUndo=[clone(boxes)]; processUndo=[clone(config)]; setBusy(true); job="working"');
+    d.getElementById('start').value='2.5';d.getElementById('end').value='8.5';d.getElementById('sign').value='-1';d.getElementById('path').value='/tmp/中文视频.avi';
+    const state=w.eval('JSON.stringify({config,boxes,search,pending,boxUndo,processUndo,dirty,busy,selected,job})');
+    const requests=dom.requests.length;d.getElementById('languageToggle').focus();w.FringeI18n.setLanguage('en');await flush();
+    assert.equal(w.eval('JSON.stringify({config,boxes,search,pending,boxUndo,processUndo,dirty,busy,selected,job})'),state);
+    assert.equal(d.getElementById('start').value,'2.5');assert.equal(d.getElementById('end').value,'8.5');assert.equal(d.getElementById('sign').value,'-1');
+    assert.equal(d.getElementById('path').value,'/tmp/中文视频.avi');assert.equal(d.activeElement.id,'languageToggle');
+    assert.equal(dom.requests.length,requests,'switching must not send recomputation requests');
+    assert.equal(d.getElementById('run').disabled,true);
+  }finally{w.close();}
+});
+test('new progress and validation errors track the selected language',async()=>{
+  const dom=await page({saved:'en'}),w=dom.window,d=w.document;
+  try{
+    const status=d.getElementById('status');status.textContent='已解码 150/600 帧；复算 3 框，复用 2 框';await flush();
+    assert.equal(status.textContent,'Decoded 150/600 frames; recalculating 3 regions, reusing 2');
+    status.textContent='前后窗口不足或不稳定，不能生成拼接估计。请检查边界/窗口；不能强行拉齐。';await flush();assert.match(status.textContent,/alignment cannot be forced/);
+    d.getElementById('languageToggle').click();await flush();assert.match(status.textContent,/不能强行拉齐/);
+  }finally{w.close();}
+});
+test('saved language loads and private/offline storage failure does not block switching',async()=>{
+  let dom=await page({saved:'en'});assert.equal(dom.window.document.documentElement.lang,'en');dom.window.close();
+  dom=await page({blockedStorage:true});dom.window.document.getElementById('languageToggle').click();await flush();assert.equal(dom.window.document.documentElement.lang,'en');dom.window.close();
+});
+test('processing revisions, tooltips and previews preserve their numbers',async()=>{
   const dom=await page(),w=dom.window,t=w.FringeI18n.english;
-  try {
-    const examples=[
-      '1920 × 1080 · 29.97 帧/秒 · 12.50 秒',
-      '此区间有 7 个待核对步长，其中 2 个缺少可读相位。当前数值是条件估计，可能漏计整数条纹，不能视作已确认的真实总变化量。切换到连续区间，或检查红色时间段。',
-      '持续单向漂移候选起点：约 12.3 秒。检测到持续单向漂移候选，但没有充分静止基线。这只是图像运动起点候选，不能证明加热在此时开始。',
-      '信号弱/饱和/暗区域；区域相位变化不一致',
-      '1.000 → 2.000 秒 · 本步融合变化 -0.20 条 · 本区域 +0.10 条 · 待核对',
-      '1.000 秒 · 条件累计 +0.10 条 · 通过当前检查',
-      '帧时间戳数 10 与实际解码帧数 9 不一致，无法可靠计时。'
+  try{
+    const samples=[
+      '2026-10-07 13:00:00 · 时间区间/符号',
+      '找到 5 个合格候选框（上限 7）。不足时不补入暗区。；保留已有手动框',
+      '仅预览，尚未保存。5 项处理；原始条件总数 +1.000 → 估计条件总数 +2.000 条。',
+      '12.345 秒 · 稳健空间融合 · 通过当前检查，准确性仍待验证',
+      '90.0% · 有断点 · 含估计 · 相位失锁 / 过曝',
+      '1.0000 → 1.0333 s · 原始增量 +0.020 · 当前 +0.010 条 · 原始质量/排除限制'
     ];
-    for(const text of examples) assert.doesNotMatch(t(text),/\p{Script=Han}/u,text);
-    assert.equal(t('无法读取视频：/tmp/实验秒条.avi'),'Could not read the video: /tmp/实验秒条.avi');
-  } finally {w.close();}
+    for(const s of samples)assert.doesNotMatch(t(s),/\p{Script=Han}/u,s);
+    assert.match(t(samples[2]),/\+1\.000 → estimated conditional total \+2\.000/);
+    assert.equal(t('/tmp/中文文件.avi'),'/tmp/中文文件.avi');
+  }finally{w.close();}
 });

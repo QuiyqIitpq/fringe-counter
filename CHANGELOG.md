@@ -1,21 +1,13 @@
 # Changelog
 
-## v1.1.1 — Chinese / English interface
+## v1.2.1 — Public source package (2026-10-22)
 
-- Add a one-click language button to the application and newly generated offline reports.
-- Default to Chinese and remember the language per browser origin when local storage is available.
-- Translate controls, help, progress, error messages and result explanations without resetting the analysis or selected interval.
-- Embed translations into HTML reports so switching also works offline.
-- Keep the v1.1 numerical core and raw data formats unchanged.
-- Remove the synthetic output plot from the main introduction and label it as a test-data visualization.
+Editable multi-region tracking with reversible processing.
 
-## v1.1.0 — First GitHub publication
+- Publish the selected local implementation with its Chinese/English interface and self-contained reports.
+- Remove personal default recordings and automatic scans of private/sibling result folders.
+- Prefer the installation's own Python environment; add a first-run setup entry point.
+- Exclude recordings, laboratory results, inherited development reports and private validation runners.
+- Preserve numerical implementation and research limitations. Packaging does not establish new experimental accuracy.
 
-- Publish the supplied recorded-video fringe counter as an experimental prototype.
-- Preserve the numerical core and existing tests.
-- Include Chinese UI, English project overview, and Chinese user guide.
-- Remove the personal default video path and Codex-specific Python launcher path.
-- Exclude laboratory recordings, generated reports, caches, and internal handover documents.
-- Document sampling assumptions, conditional totals, and the boundary between synthetic checks and experimental accuracy.
-
-The existing application version is retained; “first publication” does not rename the supplied v1.1 code to v1.0.
+See [version history](docs/version-history.md) for the intermediate v1.3–v1.6 changes and earlier publications.
