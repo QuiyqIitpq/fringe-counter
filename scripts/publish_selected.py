@@ -66,7 +66,14 @@ def main():
                 while ref['type']=='tag':ref=api(f'repos/{repo}/git/tags/'+ref['sha'])['object']
                 if ref['sha']!=commit:raise RuntimeError('Existing tag points to a different snapshot: '+tag)
                 if not record['draft']:
-                    print('Already published; retained:',record['html_url']);continue
+                    if release.get('refresh_notes'):
+                        notes=command('git','show',f'{head}:docs/releases/{tag}.md').stdout.decode()
+                        payload=dict(body=notes,make_latest='true' if release.get('latest') else 'false')
+                        result=subprocess.run(['gh','api',f'repos/{repo}/releases/{record["id"]}','--method','PATCH','--input','-'],input=json.dumps(payload).encode(),stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+                        if result.returncode:raise RuntimeError(result.stderr.decode(errors='replace'))
+                        print('Release notes updated; assets retained:',record['html_url'])
+                    else:print('Already published; retained:',record['html_url'])
+                    continue
             else:
                 notes=command('git','show',f'{commit}:docs/releases/{tag}.md').stdout.decode()
                 record=api(f'repos/{repo}/releases',dict(tag_name=tag,target_commitish=commit,name=release['name'],body=notes,draft=True,prerelease=False,make_latest='false'))

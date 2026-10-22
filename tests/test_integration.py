@@ -1,7 +1,6 @@
 import unittest, tempfile, sys, subprocess, csv, json
 from pathlib import Path
 import numpy as np
-from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from core import analyze,load_raw,spectrum,Tracker,binary
 from processing import derive,save_revision,default_config
@@ -30,10 +29,7 @@ class TestIntegration(unittest.TestCase):
    process.stdin.close();self.assertEqual(process.wait(),0)
    rois=[dict(id='r0',label='ROI 1',x=20,y=20,w=180,h=100),dict(id='r1',label='ROI 2',x=200,y=110,w=160,h=120)]
    analyze(video,p/'one',rois=rois,preview_s=30);m,a=load_raw(p/'one');self.assertEqual(a['delta'].shape,(n,2));self.assertAlmostEqual(a['delta'][:,0].sum(),1.2,delta=.025)
-   rois[1]['x']=190;analyze(video,p/'two',rois=rois,previous=p/'one');m2,a2=load_raw(p/'two');self.assertEqual(m2['cache']['reused'],['r0']);self.assertEqual(m2['cache']['recomputed'],['r1']);np.testing.assert_array_equal(a['delta'][:,0],a2['delta'][:,0]);self.assertEqual(m2['rois'][1]['x'],190);self.assertEqual(m2['rois'][0]['w'],180);self.assertNotIn('frame_near_repeat',a2);self.assertFalse((p/'two'/'.tracking_tmp').exists())
-   with patch('core.probe',side_effect=AssertionError('unchanged cache must not decode timestamps')):
-    analyze(video,p/'three',rois=rois,previous=p/'two',analysis_mode='full')
-   m3,a3=load_raw(p/'three');self.assertEqual(m3['cache']['recomputed'],[]);np.testing.assert_array_equal(a2['delta'],a3['delta'])
+   rois[1]['x']=190;analyze(video,p/'two',rois=rois,previous=p/'one');m2,a2=load_raw(p/'two');self.assertEqual(m2['cache']['reused'],['r0']);self.assertEqual(m2['cache']['recomputed'],['r1']);np.testing.assert_array_equal(a['delta'][:,0],a2['delta'][:,0]);self.assertEqual(m2['rois'][1]['x'],190);self.assertEqual(m2['rois'][0]['w'],180)
  def test_clean_off_restores_same_selected_raw_exactly(self):
   m,a=fixture(600);a['delta'][:]=.002;a['delta'][0]=0;a['delta'][200:220]=.25;c=default_config(m);c['enabled']=['r0','r1','r2','r3'];raw=derive(m,a,c);c['cleaning']=True;c['stitches']=[dict(start_s=6.5,end_s=7.5,pre_window_s=3,post_window_s=3)];derive(m,a,c);c['cleaning']=False;restored=derive(m,a,c);self.assertEqual(raw['summary'],restored['summary']);self.assertEqual(raw['track'],restored['track'])
 if __name__=='__main__':unittest.main()

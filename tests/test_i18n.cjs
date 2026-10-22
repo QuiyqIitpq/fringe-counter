@@ -40,7 +40,7 @@ test('all initial controls and accessibility labels switch and round-trip',async
   try{
     assert.equal(d.documentElement.lang,'zh-CN');
     d.getElementById('languageToggle').click();await flush();
-    assert.equal(d.documentElement.lang,'en');assert.match(d.title,/1\.7\.0/);
+    assert.equal(d.documentElement.lang,'en');assert.match(d.title,/1\.3\.0/);
     assert.doesNotMatch(textNodes(w),/\p{Script=Han}/u);
     assert.equal(d.getElementById('pairImage').alt,'Adjacent original frames');
     assert.equal(d.getElementById('revisions').getAttribute('aria-label'),'Processing revision');
@@ -113,31 +113,9 @@ test('processing revisions, tooltips and previews preserve their numbers',async(
 test('v1.3 gap diagnostics translate without changing numbers or enabling offline mutations',async()=>{
  const dom=await page({offline:true});const w=dom.window,d=w.document;
  const before=d.getElementById('qualifiedMetrics').textContent;assert.match(before,/有效步长部分和/);
- assert.equal(d.getElementById('net').textContent,'无完整估计');assert.equal(d.getElementById('directReference').disabled,true);
+ assert.equal(d.getElementById('net').textContent,'无法确定');assert.equal(d.getElementById('directReference').disabled,true);
  d.getElementById('languageToggle').click();await flush();
- assert.equal(d.getElementById('net').textContent,'No complete estimate');assert.match(d.getElementById('qualifiedMetrics').textContent,/Qualified partial sum/);
+ assert.equal(d.getElementById('net').textContent,'Undetermined');assert.match(d.getElementById('qualifiedMetrics').textContent,/Qualified partial sum/);
  assert.equal(d.getElementById('continuousIntervals').querySelector('button').disabled,true);
  d.getElementById('languageToggle').click();await flush();assert.equal(d.getElementById('qualifiedMetrics').textContent,before);dom.window.close();
-});
-
-test('v1.4 recovery numbers, candidate evidence and offline switches stay consistent',async()=>{
- const dom=await page({offline:true});const w=dom.window,d=w.document;
- try{
-  w.eval(`config.joint_recovery=true;report.recovery={available:true,estimated_net_cycles:-179.079,remaining_ambiguous_steps:559,original_unresolved_steps:618,counts:{spatial:54,temporal:5,missing:107,blocked:0},note:'整数候选仍有歧义',sensitivity_models:[{window_s:.6,net_cycles:-179.079,missing_steps:0}],records:[{frame:120,time_s:5.1,label:'空间关系支持（依赖锚点采样条件）',estimate_cycles:-.43,candidates:[-.43,.57],spatial:{spatial_residual_cycles:.002}}]};renderRecovery()`);
-  assert.equal(d.getElementById('jointRecovery').disabled,true);
-  assert.equal(d.getElementById('recoveryNet').textContent,'-179.079');
-  const before=w.eval('JSON.stringify({report,config})');
-  w.FringeI18n.setLanguage('en');await flush();assert.doesNotMatch(d.getElementById('jointSection').textContent,/\p{Script=Han}/u);
-  assert.equal(w.eval('JSON.stringify({report,config})'),before);
-  w.FringeI18n.setLanguage('zh-CN');await flush();assert.match(d.getElementById('recoveryCounts').textContent,/空间关系支持 54/);
- }finally{w.close()}
-});
-test('selected analysis mode is sent without changing ROI geometry',async()=>{
- const dom=await page(),w=dom.window,d=w.document;
- try{
-  w.eval('meta={path:"/tmp/test.mp4"};boxes=[{id:"r1",x:10,y:20,w:96,h:96}];');
-  d.getElementById('analysisMode').value='full';d.getElementById('run').click();await flush();await flush();
-  const req=dom.requests.find(x=>x.url==='/api/analyze');assert.ok(req);
-  const body=JSON.parse(req.options.body);assert.equal(body.analysis_mode,'full');assert.deepEqual(body.rois,[{id:'r1',x:10,y:20,w:96,h:96}]);
- }finally{w.close();}
 });

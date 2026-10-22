@@ -4,23 +4,6 @@
 (() => {
   'use strict';
   const en = {
-    '分析模式': 'Analysis mode',
-    '均衡（默认）': 'Balanced (default)',
-    '完整空间复核（较慢）': 'Full spatial review (slower)',
-    '均衡模式逐帧追踪，保留局部复核和断点联合检查。完整模式额外检查全画面密集小框；框不变时复用已有追踪。耗时随视频长度和框数变化，建议先用 5 个框。': 'Balanced mode tracks every frame, retaining local checks and joint gap analysis. Full mode also checks a dense spatial grid. Unchanged regions reuse existing tracks. Runtime depends on duration and ROI count; start with five regions.',
-
-    '密集空间复核证据': 'Dense spatial evidence',
-    '原始完整净变化与模型估计分开。多框可以检查相对漏计，但所有框共同漏掉整条时，仍需要运动连续性假设。新版默认开启条件估计，可关闭以查看严格结果；不与清洗混用。密集小框只提供空间复核证据，不进入用户计数框的算术平均。': 'Original complete net changes and model estimates are separate. Multiple regions can check relative missed counts, but shared whole-fringe loss still requires motion assumptions. Conditional estimation is enabled by default; disable it for strict observations. It is not combined with cleaning. Dense patches supply spatial checks only and do not enter the arithmetic mean of selected regions.',
-    '密集空间复核支持（依赖锚点采样条件）': 'Dense spatial support (conditional on anchor sampling)',
-
-    '稳健融合 · 净变化': 'Robust fusion · Net change',
-    '稳健融合 · 连续可读净变化': 'Robust fusion · Continuously readable net change',
-    '稳健融合 + 断点估计 · 条件净变化': 'Robust fusion + gap estimates · Conditional net change',
-    '无完整估计': 'No complete estimate',
-    '主结果与估计状态': 'Primary result and estimate status',
-    '严格观测仍有断点。上方条件估计补充显示整段趋势，下方保留可读部分及原始诊断。': 'Strict observations still contain gaps. The conditional estimate above shows the full trend; readable segments and raw diagnostics are retained below.',
-    '深紫色虚线为整段条件估计，深灰线为严格可读分段。缺少可靠相位的步长使用邻近趋势插值；不同窗口的结果范围不是误差条，也不保证包含真值。上方主卡片与深紫色虚线使用同一估计；原始可读数据另行保留。': 'The dark purple dashed curve is the full conditional estimate; the dark grey curve shows strictly readable segments. Missing phases use neighboring-trend interpolation. The window range is not an error bar and need not contain the truth. The main cards and purple curve use the same estimate; original readable data are retained.',
-
     '干涉条纹计数 · v1.1.1': 'Fringe Counter · v1.1.1',
     '干涉条纹计数': 'Fringe Counter',
     '录制视频 · 局部相位追踪 · 正负运动累计': 'Recorded video · Local phase tracking · Signed motion',
@@ -158,14 +141,6 @@
   };
   // Match whole application messages, preserving interpolated paths and numbers.
   const patterns = [
-    [/^(均衡模式|完整空间复核|历史结果：未记录模式) · (.*?) · 不含选框、最终统计和导出$/, (_,m,t)=>({'均衡模式':'Balanced mode','完整空间复核':'Full spatial review','历史结果：未记录模式':'Historical result: mode not recorded'}[m])+' · '+t.replace('分析耗时 ','Analysis time ').replace('原始追踪耗时 ','Raw tracking time ')+' · excludes ROI selection, final statistics and export'],
-    [/^已读取 (\d+)\/(\d+) 帧；并行追踪 (\d+)\/(\d+) 框帧$/,(_,a,b,c,d)=>`Read ${a}/${b} frames; tracked ${c}/${d} ROI frames in parallel`],
-    [/^并行追踪 (\d+)\/(\d+) 框帧（不跳帧）$/,(_,a,b)=>`Parallel tracking ${a}/${b} ROI frames (no frame skipping)`],
-
-    [/^整段条件估计：仍有 (\d+) 步不能唯一确定。不同趋势窗口得到 (.+) 至 (.+) 条；这不是误差范围，也不保证包含真值。正反向累计同样包含估计，未观测到的往返不能恢复。$/,(_,n,a,b)=>`Full conditional estimate: ${n} steps remain ambiguous. Different trend windows give ${a} to ${b} fringes; this is not an uncertainty interval and may exclude the truth. Positive and negative totals also include estimates; unobserved round trips cannot be recovered.`],
-    [/^原始断点 (\d+)；空间关系支持 (\d+)；密集空间复核 (\d+)；多窗口一致 (\d+)；缺少可靠相位 (\d+)；用户排除 (\d+)。这些连接仍依赖模型，不代表准确率。$/,(_,a,b,c,d,e,f)=>`Original gaps ${a}; spatial support ${b}; dense spatial checks ${c}; window agreement ${d}; no reliable phase ${e}; user excluded ${f}. These connections remain model-dependent, not accuracy measurements.`],
-    [/^空间复核 (\d+)\/(\d+) 个图像对$/,(_,a,b)=>`Spatial checks: ${a}/${b} image pairs`],
-
     [/^(\d+) × (\d+) · ([\d.]+) 帧\/秒 · ([\d.]+) 秒$/, (_,w,h,f,s)=>`${w} × ${h} · ${f} fps · ${s} s`],
     [/^搜索框：(.+)（原始像素）$/, (_,box)=>`Search box: ${box} (original pixels)`],
     [/^([\d.]+(?:–[\d.]+)?) 秒$/, (_,s)=>`${s} s`],
@@ -433,52 +408,13 @@
     '当前仍为旧引擎原始追踪；点击“分析 / 复算修改的框”才能使用新相位提取。':'Tracking was computed by the old engine. Reanalyze to use the new phase extraction.',
     '整段净变化尚无法确定。下方仅列可读部分及诊断条件和。':'The full net change is undetermined. Readable partial sums and diagnostic conditional sums are listed below.',
     '所选区间连续可读，仍依赖采样条件。':'The selected interval is continuously readable under the sampling assumption.',
-    '空间模型失配时保留通过复核的参考点测量':'Retain verified local reference measurements when the spatial model fails',
-    '前后帧的六组滤波结果须一致；这是固定参考点的局部观测，未经多框确认，也不解决整条歧义。':'Six filter variants on both frames must agree. This is a local observation at the fixed reference, without multi-region confirmation or resolution of integer ambiguity.',
-    '空间失配后局部复核步长':'Locally verified steps after spatial mismatch','滤波器更新次数':'Filter updates','局部参考点复核开关':'Verified local reference toggle','参考点局部复核通过；空间模型不适用':'Locally verified reference; spatial model inapplicable',
     '参考点直接测量步长':'Direct reference measurement steps','至少一框接近半条':'At least one region near half a fringe','至少一框信号不良':'At least one region with poor signal','至少一框失锁或重捕获':'At least one region lost lock or reacquired','近似重复画面步长':'Nearly repeated image steps','旧结果未检测':'Not measured in this older result',
     '查看此区间':'Inspect this interval','查看原始帧':'Inspect source frames','诊断数据':'Diagnostics data','断点清单 CSV':'Unresolved intervals CSV','连续区间 CSV':'Continuous intervals CSV','查看连续区间':'Inspect continuous interval','参考点直接测量开关':'Direct reference measurement toggle','参考点直接测量；多框支持不足':'Direct reference observation; insufficient multi-region support'
   });
   patterns.unshift(
     [/^有效步长部分和 ([+\-\d.—]+) 条；诊断条件和 ([+\-\d.—]+) 条；条件和含 (\d+) 个未通过检查的有限数值。$/,(_,a,b,n)=>`Qualified partial sum ${a} fringes; diagnostic conditional sum ${b} fringes; includes ${n} finite increments that failed checks.`],
-    [/^(空间失配后局部复核步长|滤波器更新次数|参考点直接测量步长|至少一框接近半条|至少一框信号不良|至少一框失锁或重捕获|近似重复画面步长)：(.+)$/,(_,label,n)=>english(label)+': '+english(n)],
+    [/^(参考点直接测量步长|至少一框接近半条|至少一框信号不良|至少一框失锁或重捕获|近似重复画面步长)：(.+)$/,(_,label,n)=>english(label)+': '+english(n)],
     [/^([\d.]+–[\d.]+) s · (\d+) 步 · (.+)$/,(_,range,n,tail)=>`${range} s · ${n} steps · `+(tail.endsWith(' 条')?tail.replace(' 条',' fringes'):tail.split(' / ').map(english).join(' / '))]
-  );
-
-
-  Object.assign(en,{
-  "条纹计数 1.7.0 · 可编辑多框": "Fringe Counter 1.7.0 · Editable regions",
-  "Fringe Counter 1.7.0 · 本机离线处理 · 原始视频不修改": "Fringe Counter 1.7.0 · Local offline processing · Source videos remain unchanged",
-  "断点联合检查与整段估计": "Joint gap checks and whole-interval estimates",
-  "结合其他框和前后趋势检查整数候选": "Check integer candidates using other regions and neighboring trends",
-  "趋势窗口（秒）": "Trend window (seconds)",
-  "原始完整净变化与模型估计分开。多框可以检查相对漏计，但所有框共同漏掉整条时，仍需要运动连续性假设。此功能默认关闭，可撤销；不与清洗混用。": "The observed total and model estimate are separate. Regions can check relative cycle slips, but common whole-cycle slips require a motion-continuity assumption. Off by default and reversible; do not combine with cleaning.",
-  "所选区间 · 模型净变化估计": "Selected interval · Model net estimate",
-  "模型下仍有歧义的步长": "Steps still ambiguous under the model",
-  "紫色虚线为模型估计。缺少可靠相位的步长使用邻近趋势插值；不同窗口的结果范围不是误差条，也不保证包含真值。此估计不改变上方原始统计。": "The purple dashed line is a model estimate. Steps without reliable phase use neighboring-trend interpolation. The range across windows is not an error bar and need not contain the truth. Original statistics above are unchanged.",
-  "逐个断点的证据与候选": "Evidence and candidates for each gap",
-  "联合检查全部证据": "All joint-check evidence",
-  "整数候选 CSV": "Integer candidates CSV",
-  "模型估计": "Model estimate",
-  "无可靠相位": "No reliable phase",
-  "没有参与统计的区域，不能估计。": "No participating regions; estimation is unavailable.",
-  "旧追踪缺少局部相位斜率，请重新分析视频。": "Older tracking lacks local phase slopes. Reanalyze the video.",
-  "请先关闭清洗，再单独检查联合解缠估计。": "Disable cleaning before checking joint unwrapping estimates separately.",
-  "原始可读步长": "Originally readable step",
-  "空间关系支持（依赖锚点采样条件）": "Spatially supported (anchor sampling assumption)",
-  "多窗口趋势一致（模型估计）": "Trend agreement across windows (model estimate)",
-  "整数候选仍有歧义": "Integer candidates remain ambiguous",
-  "缺少可靠相位": "No reliable phase",
-  "用户排除，未补值": "Excluded by user; no replacement",
-  "模型估计，不能排除共同漏整条或扰动中的真实位移。候选搜索为每步 ±2 条；窗口范围不是误差条或真值上下界。无相位区间按相邻趋势插值；片头片尾必要时单侧外推并记录。原始已通过步长仍依赖采样假设。": "Model estimate: common cycle slips and real motion during disturbances cannot be ruled out. Search is limited to ±2 cycles per step. Window sensitivity is not an error bar or bounds on the truth. Missing-phase intervals use trend interpolation; endpoints use documented one-sided extrapolation if needed. Originally accepted steps still assume adequate sampling.",
-  "联合整数候选检查开关": "Joint integer-candidate check toggle",
-  "趋势估计窗口": "Trend estimation window"
-});
-
-  patterns.unshift(
-    [/^原始断点 (\d+)；空间关系支持 (\d+)；多窗口一致 (\d+)；缺少可靠相位 (\d+)；用户排除 (\d+)。这些连接仍依赖模型，不代表准确率。$/,(_,a,b,c,d,e)=>`Original gaps ${a}; spatial support ${b}; window agreement ${c}; no reliable phase ${d}; user excluded ${e}. These connections depend on a model and do not measure accuracy.`],
-    [/^([\d.]+) s：(.+) 条(.*)$/,(_,w,n,tail)=>`${w} s: ${n} cycles`+tail.replace(/（(\d+) 步无估计）/,' ($1 steps without estimates)')],
-    [/^([\d.]+) s · (.+) · 估计 (.+) · 候选 (.+)$/,(_,t,label,n,tail)=>`${t} s · ${english(label)} · estimate ${n} · candidates `+tail.replace('无可靠相位','No reliable phase').replace(' · 空间残差 ',' · spatial residual ').replace(' 条',' cycles')]
   );
 
   function english(source) {
