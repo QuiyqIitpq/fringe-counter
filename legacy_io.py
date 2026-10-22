@@ -61,6 +61,17 @@ def probe(path, timestamps=False):
     result = dict(path=str(path), width=int(s["width"]), height=int(s["height"]), fps=fps,
                   duration_s=duration, declared_frames=n, timestamp_source="container frame timestamps")
     if timestamps:
+        # Packet PTS are display times, even with B-frame reordering. Use only
+        # complete, unique timestamps matching the container's declared count;
+        # decoded count is independently checked by the tracking pipeline.
+        if n>1 and path.suffix.lower() in ['.mp4','.mov','.m4v']:
+            quick=subprocess.run([binary('ffprobe'),'-v','error','-select_streams','v:0','-show_entries','packet=pts_time','-of','json',str(path)],capture_output=True)
+            try:
+                packets=json.loads(quick.stdout).get('packets',[])
+                pts=np.sort([float(q['pts_time']) for q in packets if 'pts_time' in q])
+                if len(pts)==len(packets)==n and np.isfinite(pts).all() and np.all(np.diff(pts)>0):
+                    result['timestamps']=pts-pts[0];result['timestamp_source']='sorted container packet PTS; decoded frame count checked';return result
+            except (ValueError,TypeError):pass
         p = subprocess.run([binary("ffprobe"), "-v", "error", "-select_streams", "v:0",
                             "-show_frames", "-show_entries", "frame=best_effort_timestamp_time", "-of", "json", str(path)], capture_output=True)
         frames = json.loads(p.stdout).get("frames", []) if not p.returncode else []

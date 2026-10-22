@@ -1,1 +1,16 @@
-{"releases":[]}
+{
+  "releases": [
+    {
+      "tag": "v1.2.1",
+      "commit": "3bf90086b6cb89e3c7ec52dfec10909ee30038f7",
+      "name": "v1.2.1 — Editable regions and bilingual reports",
+      "latest": false
+    },
+    {
+      "tag": "v1.7.0",
+      "commit": "HEAD",
+      "name": "v1.7.0 — Balanced tracking and full spatial review",
+      "latest": true
+    }
+  ]
+}

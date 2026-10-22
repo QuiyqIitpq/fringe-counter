@@ -1,8 +1,8 @@
 # Changelog
 
-## v1.2.1 — Public source package (2026-10-22)
+## v1.7.0 — Public source package (2026-10-22)
 
-Editable multi-region tracking with reversible processing.
+Balanced all-frame tracking with optional full spatial review.
 
 - Publish the selected local implementation with its Chinese/English interface and self-contained reports.
 - Remove personal default recordings and automatic scans of private/sibling result folders.

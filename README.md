@@ -2,11 +2,11 @@
 
 [English](README.md) | [中文](README.zh-CN.md)
 
-**v1.2.1 · Experimental research prototype · 中文 / English · Local video processing**
+**v1.7.0 · Experimental research prototype · 中文 / English · Local video processing**
 
-Editable multi-region tracking with reversible processing. Load a recorded interferogram, select clear regions, and inspect signed forward/reverse and fractional fringe changes. Videos are processed on your computer.
+Balanced all-frame tracking with optional full spatial review. Load a recorded interferogram, select clear regions, and inspect signed forward/reverse and fractional fringe changes. Videos are processed on your computer.
 
-This is a historical milestone. For new work, use the latest release. [Downloads and release notes](https://github.com/QuiyqIitpq/fringe-counter/releases).
+This is the current recommended source release. [Downloads and release notes](https://github.com/QuiyqIitpq/fringe-counter/releases).
 
 ## First run
 
@@ -37,11 +37,18 @@ Use **English / 中文** in the upper-right corner to switch immediately without
 
 The public package starts without a personal default video or bundled laboratory results. Saved analyses created in this installation appear under its own `results/` folder.
 
+## Analysis modes
+
+**Balanced** is the default: all frames are processed, with adaptive pair filtering, local quality checks, robust fusion and joint diagnostics. It avoids the additional dense full-frame spatial review.
+
+**Full spatial review** adds the dense multiscale checks introduced in v1.6. Reanalyzing unchanged regions can reuse their tracks. It can take substantially longer.
+
+Parallel tracking uses temporary disk maps (up to five workers). Disk use scales with frame count, region count and processed region size. The application checks available space; normal completion/error cleanup removes `.tracking_tmp`. Interrupted or forcibly killed runs can leave temporary files.
 
 ## Command line
 
 ```sh
-.venv/bin/python3 app.py --video '/path/to/video.mp4' --out 'results/my-analysis'
+.venv/bin/python3 app.py --video '/path/to/video.mp4' --out 'results/my-analysis' --mode balanced
 ```
 
 `--rois-json` supplies region geometry and `--preview` selects the reference time for candidate detection. It does not define heating onset.
